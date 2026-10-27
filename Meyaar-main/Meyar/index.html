@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>لوحة التحكم المالية</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm">
+    <div class="container-fluid px-3 px-lg-4">
+      <a class="navbar-brand d-flex align-items-center gap-2 fw-bold" href="#">
+        <i class="bi bi-bar-chart-fill text-warning"></i>
+        <span>لوحة التحكم المالية</span>
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navMain">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0 gap-1" id="navTabs">
+          <li class="nav-item"><button class="nav-link active" data-tab="dash"><i class="bi bi-speedometer2"></i> لوحة التحكم</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="tx"><i class="bi bi-receipt"></i> المعاملات</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="acc"><i class="bi bi-wallet2"></i> الحسابات</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="ast"><i class="bi bi-graph-up-arrow"></i> الأصول والأسعار</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="set"><i class="bi bi-gear"></i> الإعدادات</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="aud"><i class="bi bi-shield-check"></i> التدقيق</button></li>
+        </ul>
+        <button class="btn btn-sm btn-outline-light" id="btnTheme" title="تبديل الوضع"><i class="bi bi-moon-stars"></i></button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container-fluid px-3 px-lg-4 py-3" id="app"></main>
+
+  <!-- Modal Transaction -->
+  <div class="modal fade" id="modalTx" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalTxTitle">معاملة جديدة</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="formTx">
+          <div class="modal-body">
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label">التاريخ</label>
+                <input type="date" class="form-control" name="date" required>
+              </div>
+              <div class="col-md-8">
+                <label class="form-label">الاسم / الوصف</label>
+                <input type="text" class="form-control" name="name" placeholder="مثال: مرتب أكتوبر">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">نوع الحركة</label>
+                <select class="form-select" name="type">
+                  <option value="دخل">دخل</option>
+                  <option value="مصروف">مصروف</option>
+                  <option value="شراء أصل">شراء أصل</option>
+                  <option value="بيع أصل">بيع أصل</option>
+                  <option value="تحويل">تحويل</option>
+                  <option value="تسوية">تسوية</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">التصنيف</label>
+                <select class="form-select" name="cat" id="txCat"></select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">الحساب</label>
+                <select class="form-select" name="acc" id="txAcc"></select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">المبلغ</label>
+                <input type="number" class="form-control" name="amt" step="any" min="0" required>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">العملة</label>
+                <select class="form-select" name="cur">
+                  <option value="EGP">جنيه مصري (EGP)</option>
+                  <option value="SAR">ريال سعودي (SAR)</option>
+                  <option value="USD">دولار أمريكي (USD)</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">الرسوم</label>
+                <input type="number" class="form-control" name="fee" step="any" min="0" value="0">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">طريقة الدفع</label>
+                <select class="form-select" name="pay" id="txPay"></select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">رمز الأصل</label>
+                <input type="text" class="form-control" name="code" placeholder="مثال: GOLD">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">الكمية</label>
+                <input type="number" class="form-control" name="qty" step="any" min="0">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">سعر الوحدة</label>
+                <input type="number" class="form-control" name="price" step="any" min="0">
+              </div>
+              <div class="col-12">
+                <label class="form-label">ملاحظات</label>
+                <input type="text" class="form-control" name="note">
+              </div>
+            </div>
+            <div class="alert alert-info mt-3 mb-0 small">
+              <i class="bi bi-info-circle"></i> المبالغ تُحوَّل تلقائياً إلى الجنيه حسب أسعار الصرف في الإعدادات.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> حفظ</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalAcc" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">حساب جديد</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="formAcc">
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label">رمز الحساب</label>
+              <input type="text" class="form-control" name="code" required pattern="[A-Za-z0-9_]+" placeholder="BANK2">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">الاسم</label>
+              <input type="text" class="form-control" name="name" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">النوع</label>
+              <input type="text" class="form-control" name="type" value="نقد">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">رصيد افتتاحي (جنيه)</label>
+              <input type="number" class="form-control" name="open" step="any" value="0">
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="liq" id="accLiq" checked>
+              <label class="form-check-label" for="accLiq">ضمن السيولة</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+            <button type="submit" class="btn btn-primary">إضافة</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalPrice" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">سعر أصل جديد</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="formPrice">
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label">رمز الأصل</label>
+              <input type="text" class="form-control" name="code" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">الفئة</label>
+              <select class="form-select" name="cat">
+                <option>سهم</option>
+                <option>ذهب</option>
+                <option>صندوق</option>
+                <option>أخرى</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">السعر (جنيه)</label>
+              <input type="number" class="form-control" name="price" step="any" min="0" value="0">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">تاريخ التحديث</label>
+              <input type="date" class="form-control" name="date">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+            <button type="submit" class="btn btn-primary">إضافة</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="fileImport" accept=".json" hidden>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
