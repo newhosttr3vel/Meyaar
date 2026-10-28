@@ -1836,3 +1836,16 @@ code {
     border-radius: 0;
   }
 }
+
+
+/* Mobile usability guard: keep bottom navigation compact and input text legible. */
+@media (max-width: 575.98px) {
+  #navTabs .nav-link {
+    padding: .35rem .3rem !important;
+    min-height: 54px;
+  }
+  .form-control,
+  .form-select {
+    font-size: 16px;
+  }
+}
