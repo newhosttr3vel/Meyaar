@@ -164,8 +164,10 @@ function recurringOccurrenceAlreadyBooked(schedule, dueDate, todayDate, ids, val
 
   // Recurrence-linked transactions are authoritative even if their transaction date was adjusted.
   const linked = validTransactions.some(tx => {
+    const txDate = normalizeGoogleDate(tx.date);
     const marker = parseRecurringCloudNote(googleNotes(tx));
-    return marker && recurringOccurrenceKey(marker.id, marker.date) === recurringOccurrenceKey(schedule.id, due);
+    return isValidISODate(txDate) && txDate <= today && marker &&
+      recurringOccurrenceKey(marker.id, marker.date) === recurringOccurrenceKey(schedule.id, due);
   });
   if (linked) return true;
 
@@ -201,21 +203,42 @@ function safeToSpendSnapshot(todayDate = localISODate()) {
     return total + Number(account.open || 0) + movements;
   }, 0);
 
-  // Only unpaid recurring expenses are reservations. Linked/recorded due dates never get subtracted again.
-  const obligations = recurringOccurrences({ fromDate: today, daysAhead: 30, todayDate: today })
-    .filter(item => item.schedule.type === 'مصروف' &&
-      !recurringOccurrenceAlreadyBooked(item.schedule, item.dueDate, today, ids, validTransactions))
-    .map(item => ({
-      key: item.key,
-      dueDate: item.dueDate,
-      scheduleId: item.scheduleId,
-      name: item.schedule.name,
-      cur: item.schedule.cur,
-      amount: Number(item.schedule.amount || 0),
-      fee: Number(item.schedule.fee || 0),
-      amountEGP: toEGP(Number(item.schedule.amount || 0) + Number(item.schedule.fee || 0), item.schedule.cur, today),
-      overdue: item.dueDate < today
-    }));
+  // Unlike the reminder agenda, the safety forecast counts every unpaid past-due month.
+  // Future-dated entries are not in today's cash balance, so their commitment is still counted once.
+  const endDate = addCalendarDays(today, 30);
+  const endMonth = endDate.slice(0, 7);
+  const obligations = [];
+  (S.recurringSchedules || []).filter(schedule =>
+    schedule.active !== false && schedule.type === 'مصروف' && isValidISODate(schedule.startDate)
+  ).forEach(schedule => {
+    let monthCursor = schedule.startDate.slice(0, 7);
+    while (monthCursor <= endMonth) {
+      const [year, month] = monthCursor.split('-').map(Number);
+      const dueDate = monthDueDate(year, month - 1, schedule.dueDay);
+      if (dueDate >= schedule.startDate && dueDate <= endDate) {
+        // Once the due date has passed, a known recorded occurrence is already reflected in cash.
+        if (!(dueDate <= today && occurrenceAlreadyGenerated(schedule.id, dueDate)) &&
+            !recurringOccurrenceAlreadyBooked(schedule, dueDate, today, ids, validTransactions)) {
+          obligations.push({
+            key: recurringOccurrenceKey(schedule.id, dueDate),
+            dueDate,
+            scheduleId: schedule.id,
+            name: schedule.name,
+            cur: schedule.cur,
+            amount: Number(schedule.amount || 0),
+            fee: Number(schedule.fee || 0),
+            amountEGP: toEGP(Number(schedule.amount || 0) + Number(schedule.fee || 0), schedule.cur, today),
+            overdue: dueDate < today
+          });
+        }
+      }
+      const [cursorYear, cursorMonth] = monthCursor.split('-').map(Number);
+      monthCursor = cursorMonth === 12
+        ? String(cursorYear + 1) + '-01'
+        : String(cursorYear) + '-' + String(cursorMonth + 1).padStart(2, '0');
+    }
+  });
+  obligations.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.name.localeCompare(b.name));
 
   const commitments = obligations.reduce((sum, item) => sum + item.amountEGP, 0);
   // Goal.current is the amount declared as still set aside in liquid funds, not the unfunded target gap.
