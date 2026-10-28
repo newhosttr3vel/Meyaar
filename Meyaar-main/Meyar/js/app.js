@@ -1497,8 +1497,9 @@ function openRecurringModal(id = '') {
 
 function sameRecurringDefinition(a, b) {
   return String(a.name || '').trim().toLocaleLowerCase() === String(b.name || '').trim().toLocaleLowerCase() &&
-    a.type === b.type && a.acc === b.acc &&
+    a.type === b.type && a.cat === b.cat && a.acc === b.acc && a.cur === b.cur &&
     Math.abs(Number(a.amount) - Number(b.amount)) < 0.005 &&
+    Math.abs(Number(a.fee || 0) - Number(b.fee || 0)) < 0.005 &&
     Number(a.dueDay) === Number(b.dueDay);
 }
 
