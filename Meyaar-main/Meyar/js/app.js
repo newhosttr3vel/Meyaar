@@ -11,9 +11,24 @@ const CURS = { EGP: 'ج.م', SAR: 'ر.س', USD: '$' };
 
 const API_URL = "https://script.google.com/macros/s/AKfycbwJI2_IFB0ukOs1Ufko0wuLob2eAEIFLaPwsglNAeWnMdCUB_7euqWGV4xGzVBH1SflzQ/exec";
 
-// Google Sheets is the source of truth for transactions. Keep local data if the request fails.
+// Google Sheets currently contains only a partial transaction schema. Preserve richer local records during sync.
 function googleNotes(tx) {
-  return tx && tx.googleNotes !== undefined ? String(tx.googleNotes) : String((tx && (tx.note || tx.name)) || '');
+  if (!tx) return '';
+  return String(tx.googleNotes !== undefined ? tx.googleNotes : ((tx.note || tx.name) || '')).trim();
+}
+
+function localISODate(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + d;
+}
+
+function isValidISODate(value) {
+  const raw = String(value || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
+  const date = new Date(raw + 'T00:00:00');
+  return Number.isFinite(date.getTime()) && localISODate(date) === raw;
 }
 
 function normalizeGoogleDate(value) {
@@ -25,32 +40,79 @@ function normalizeGoogleDate(value) {
   return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 }
 
+function sameRemoteCore(tx, remote) {
+  return String(tx.date || '') === remote.date && String(tx.type || '') === remote.type &&
+    String(tx.cat || '') === remote.cat && Number.isFinite(Number(tx.amt)) &&
+    Math.abs(Number(tx.amt) - remote.amt) < 0.005;
+}
+
+function hasAmbiguousGoogleDelete(tx) {
+  return S.tx.some(other => String(other.id) !== String(tx.id) &&
+    String(other.date || '') === String(tx.date || '') && googleNotes(other) === googleNotes(tx));
+}
+
+// Google currently stores only Date, Type, Amount, Category and Notes.
+// Merge those rows into local records instead of replacing richer local records with partial data.
 async function loadDataFromGoogle() {
   try {
     const response = await fetch(API_URL, { method: 'GET', cache: 'no-store' });
-    if (!response.ok) throw new Error(`Google Sheets HTTP ${response.status}`);
+    if (!response.ok) throw new Error('Google Sheets HTTP ' + response.status);
     const data = await response.json();
     if (!Array.isArray(data)) throw new Error('صيغة البيانات القادمة من Google Sheets غير صحيحة');
 
-    // Sheet with headers only means there are no transactions. Do not leave demo data behind.
-    const rows = data.slice(1).filter(row => Array.isArray(row) && row.some(cell => String(cell ?? '').trim() !== ''));
-    S.tx = rows.map((row, index) => {
+    const firstRow = Array.isArray(data[0]) ? data[0].map(v => String(v || '').trim().toLowerCase()) : [];
+    const hasHeaders = firstRow.some(v => ['date', 'type', 'amount', 'category', 'notes'].includes(v));
+    const rows = data.slice(hasHeaders ? 1 : 0).filter(row =>
+      Array.isArray(row) && row.some(cell => String(cell ?? '').trim() !== '')
+    );
+    const localPool = S.tx.map(tx => ({ tx, used: false }));
+    const imported = [];
+    const usedIds = new Set(S.tx.map(tx => String(tx.id)));
+    let nextId = Math.max(0, ...S.tx.map(tx => Number(tx.id) || 0)) + 1;
+    const allocateId = () => {
+      while (usedIds.has(String(nextId))) nextId++;
+      const id = nextId++;
+      usedIds.add(String(id));
+      return id;
+    };
+
+    rows.forEach(row => {
       const date = normalizeGoogleDate(row[0]);
       const type = String(row[1] || 'مصروف').trim();
       const amount = Number(row[2]);
       const cat = String(row[3] || 'أخرى').trim();
       const notes = String(row[4] || '').trim();
-      if (!date || !Number.isFinite(amount) || amount <= 0) return null;
-      return {
-        id: index + 1, date, type, amt: amount, cat,
-        note: notes, googleNotes: notes, name: notes || 'معاملة من Google Sheets',
-        fee: 0, pay: 'نقدي', acc: 'CASH', code: '', qty: '', price: '', sub: '', cur: 'EGP'
-      };
-    }).filter(Boolean);
+      if (!isValidISODate(date) || !Number.isFinite(amount) || amount <= 0) return;
+      const remote = { date, type, amt: amount, cat, notes };
+      let match = localPool.find(item => !item.used && sameRemoteCore(item.tx, remote) && googleNotes(item.tx) === notes);
+      if (!match) {
+        const candidates = localPool.filter(item => !item.used && sameRemoteCore(item.tx, remote));
+        if (candidates.length === 1) match = candidates[0];
+      }
+      if (match) {
+        match.used = true;
+        const tx = { ...match.tx, date, type, amt: amount, cat, googleNotes: notes };
+        const previousNotes = googleNotes(match.tx);
+        if (previousNotes !== notes) {
+          if (!match.tx.name || match.tx.name === previousNotes) tx.name = notes;
+          if (!match.tx.note || match.tx.note === previousNotes) tx.note = notes;
+        }
+        imported.push(tx);
+      } else {
+        const id = allocateId();
+        imported.push({ id, date, type, amt: amount, cat, note: notes, googleNotes: notes,
+          name: notes || 'معاملة من Google Sheets', fee: 0, pay: 'نقدي', acc: 'CASH',
+          code: '', qty: '', price: '', sub: '', cur: 'EGP' });
+      }
+    });
+
+    // Keep local-only rows: a partial/empty remote response must never erase local financial details.
+    const localOnly = localPool.filter(item => !item.used).map(item => item.tx);
+    S.tx = [...localOnly, ...imported];
     save();
   } catch (error) {
     console.error('تعذر تحميل المعاملات من Google Sheets:', error);
-    // Keep the last local snapshot; never replace it with an empty array on network failure.
+    // Keep the last local snapshot if the network or Google service fails.
   } finally {
     if (typeof render === 'function') render();
   }
@@ -109,13 +171,58 @@ function seed() {
   };
 }
 
-let S;
-try { S = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
-if (!S || !S.tx) S = seed();
-if (!S.rates) S.rates = { EGP: 1, SAR: 12.9, USD: 48.5 };
-S.tx.forEach(t => { if (!t.cur) t.cur = 'EGP'; });
+function normalizeState(input) {
+  const base = seed();
+  if (!input || typeof input !== 'object' || Array.isArray(input) || !Array.isArray(input.tx)) return base;
+  const obj = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const out = { ...base, ...input };
+  out.ui = { ...base.ui, ...obj(input.ui) };
+  if (!['dash', 'tx', 'acc', 'ast', 'set', 'aud'].includes(out.ui.tab)) out.ui.tab = 'dash';
+  out.ui.y = Number.isInteger(Number(out.ui.y)) && Number(out.ui.y) >= 1900 && Number(out.ui.y) <= 2200 ? Number(out.ui.y) : base.ui.y;
+  out.ui.m = out.ui.m === 'all' || /^(0[1-9]|1[0-2])$/.test(String(out.ui.m)) ? String(out.ui.m) : 'all';
+  out.ui.q = String(out.ui.q || '');
+  out.ui.theme = out.ui.theme === 'dark' ? 'dark' : 'light';
 
-const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+  out.rates = { ...base.rates, ...obj(input.rates) };
+  Object.keys(out.rates).forEach(cur => {
+    const n = Number(out.rates[cur]);
+    out.rates[cur] = cur === 'EGP' ? 1 : (Number.isFinite(n) && n > 0 ? n : (base.rates[cur] || 1));
+  });
+  out.rates.EGP = 1;
+
+  out.budget = { ...base.budget, ...obj(input.budget) };
+  CATS.forEach(cat => {
+    const n = Number(out.budget[cat]);
+    out.budget[cat] = Number.isFinite(n) && n >= 0 && n <= 1 ? n : base.budget[cat];
+  });
+  const warn = Number(out.warn);
+  out.warn = Number.isFinite(warn) && warn > 0 && warn <= 1 ? warn : base.warn;
+
+  const accounts = Array.isArray(input.accounts) ? input.accounts.filter(a => a && typeof a === 'object' && String(a.code || '').trim()) : base.accounts;
+  out.accounts = accounts.map(a => ({ ...a, code: String(a.code).trim(), name: String(a.name || a.code),
+    type: String(a.type || 'نقد'), open: Number.isFinite(Number(a.open)) ? Number(a.open) : 0, liq: a.liq ? 1 : 0 }));
+  if (!out.accounts.length) out.accounts = base.accounts;
+  out.prices = (Array.isArray(input.prices) ? input.prices : []).filter(p => p && typeof p === 'object' && String(p.code || '').trim()).map(p => ({
+    ...p, code: String(p.code).trim(), cat: String(p.cat || 'أخرى'),
+    price: Number.isFinite(Number(p.price)) && Number(p.price) >= 0 ? Number(p.price) : 0,
+    date: normalizeGoogleDate(p.date) || String(p.date || '')
+  }));
+  out.tx = input.tx.filter(t => t && typeof t === 'object' && !Array.isArray(t)).map((t, i) => {
+    const amt = t.amt === '' || t.amt === null ? t.amt : (Number.isFinite(Number(t.amt)) ? Number(t.amt) : t.amt);
+    const feeValue = t.fee === undefined || t.fee === null || t.fee === '' ? 0 : (Number.isFinite(Number(t.fee)) ? Number(t.fee) : t.fee);
+    return { ...t, id: t.id === undefined || t.id === null ? i + 1 : t.id,
+      date: normalizeGoogleDate(t.date) || String(t.date || ''), name: String(t.name || ''),
+      type: String(t.type || ''), cat: String(t.cat || 'أخرى'), amt, fee: feeValue,
+      acc: String(t.acc || 'CASH'), note: String(t.note || ''), cur: String(t.cur || 'EGP') };
+  });
+  return out;
+}
+
+let S;
+try { S = normalizeState(JSON.parse(localStorage.getItem(KEY))); }
+catch (e) { S = seed(); }
+
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { console.error('تعذر حفظ البيانات محلياً:', e); } };
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 const f = n => (+n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
@@ -126,7 +233,8 @@ const toEGP = (amt, cur) => (+amt || 0) * (S.rates[cur] || 1);
 function status(t, ids) {
   const ast = ['شراء أصل', 'بيع أصل'].includes(t.type);
   if (ids[t.id] > 1) return 'رقم مكرر';
-  if (!t.date || !(+t.amt > 0) || !t.type || !t.acc) return 'بيانات ناقصة';
+  if (!isValidISODate(t.date) || !Number.isFinite(Number(t.amt)) || !(Number(t.amt) > 0) || !t.type || !t.acc) return 'بيانات ناقصة';
+  if (!Number.isFinite(Number(t.fee)) || Number(t.fee) < 0) return 'رسوم غير صحيحة';
   if (!S.accounts.some(a => a.code === t.acc)) return 'حساب غير معروف';
   if ((ast || t.cat === 'الاستثمارات') && (!t.code || !(+t.qty > 0) || !(+t.price > 0))) return 'بيانات أصل ناقصة';
   const x = t.type;
@@ -375,13 +483,13 @@ function vSet() {
   return `
   <div class="row g-3"><div class="col-lg-6"><div class="box"><h3><i class="bi bi-sliders"></i> نسب الميزانية</h3><table class="table mb-0">${CATS.map(c => `<tr><td>${c}</td><td style="width:120px"><div class="input-group input-group-sm"><input type="number" class="form-control" data-b="${c}" min="0" max="100" step="1" value="${Math.round(S.budget[c] * 100)}"><span class="input-group-text">%</span></div></td></tr>`).join('')}<tr><th>المجموع</th><th style="color:var(--${Math.abs(t - 1) < 0.001 ? 'ok' : 'red'})">${pc(t)}</th></tr><tr><td>حد التحذير</td><td><div class="input-group input-group-sm"><input type="number" class="form-control" data-w="1" min="1" max="100" value="${Math.round(S.warn * 100)}"><span class="input-group-text">%</span></div></td></tr></table></div></div>
   <div class="col-lg-6"><div class="box"><h3><i class="bi bi-currency-exchange"></i> أسعار الصرف (إلى الجنيه)</h3><table class="table mb-0"><tr><td>ريال سعودي (SAR)</td><td style="width:140px"><input type="number" step="any" class="form-control form-control-sm" data-r="SAR" value="${S.rates.SAR}"></td></tr><tr><td>دولار أمريكي (USD)</td><td><input type="number" step="any" class="form-control form-control-sm" data-r="USD" value="${S.rates.USD}"></td></tr><tr><td>جنيه مصري (EGP)</td><td><input type="number" class="form-control form-control-sm" value="1" disabled></td></tr></table><p class="note mt-2 mb-0">كل المعاملات تُحوَّل إلى الجنيه حسب هذه الأسعار عند الحساب.</p></div></div>
-  <div class="col-12"><div class="box"><h3><i class="bi bi-database"></i> البيانات</h3><p class="note">البيانات محفوظة في متصفح هذا الجهاز فقط. خذ نسخة احتياطية دورياً.</p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnExp"><i class="bi bi-download"></i> تصدير JSON</button><button class="btn btn-outline-primary btn-sm" id="btnCsv"><i class="bi bi-filetype-csv"></i> تصدير CSV</button><button class="btn btn-outline-secondary btn-sm" id="btnImp"><i class="bi bi-upload"></i> استيراد</button><button class="btn btn-outline-danger btn-sm" id="btnReset"><i class="bi bi-arrow-counterclockwise"></i> استرجاع التجريبي</button></div></div></div></div>`;
+  <div class="col-12"><div class="box"><h3><i class="bi bi-database"></i> البيانات</h3><p class="note">التفاصيل الكاملة (الحساب والعملة والرسوم والكمية والسعر) محفوظة محلياً في هذا المتصفح. مزامنة Google Sheets الحالية تحفظ التاريخ والنوع والمبلغ والتصنيف والملاحظات فقط؛ صدّر نسخة احتياطية دورياً.</p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnExp"><i class="bi bi-download"></i> تصدير JSON</button><button class="btn btn-outline-primary btn-sm" id="btnCsv"><i class="bi bi-filetype-csv"></i> تصدير CSV</button><button class="btn btn-outline-secondary btn-sm" id="btnImp"><i class="bi bi-upload"></i> استيراد</button><button class="btn btn-outline-danger btn-sm" id="btnReset"><i class="bi bi-arrow-counterclockwise"></i> استرجاع التجريبي</button></div></div></div></div>`;
 }
 
 function vAud(c) {
   const v = c.v;
   const n = fn => S.tx.filter(fn).length;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localISODate();
   const tr = v.filter(t => t.type === 'تحويل').reduce((s, t) => s + toEGP(t.amt, t.cur), 0) - v.filter(t => t.type === 'تسوية').reduce((s, t) => s + toEGP(t.amt, t.cur), 0);
   const codes = [...new Set(S.tx.filter(t => t.code && t.code !== GOLD).map(t => t.code))];
   const old = S.prices.filter(p => p.price > 0 && (!p.date || (Date.now() - new Date(p.date)) / 864e5 > 30)).length;
@@ -418,10 +526,10 @@ let editingTx = null;
 function openTx(t) {
   editingTx = t || null;
   const isNew = !t;
-  t = t || { id: Math.max(0, ...S.tx.map(x => +x.id)) + 1, date: new Date().toISOString().slice(0, 10), name: '', cat: 'الأساسيات', type: 'مصروف', amt: '', fee: 0, pay: 'نقدي', acc: S.accounts[0]?.code || '', code: '', qty: '', price: '', note: '', cur: 'EGP' };
+  t = t || { id: Math.max(0, ...S.tx.map(x => +x.id)) + 1, date: localISODate(), name: '', cat: 'الأساسيات', type: 'مصروف', amt: '', fee: 0, pay: 'نقدي', acc: S.accounts[0]?.code || '', code: '', qty: '', price: '', note: '', cur: 'EGP' };
   $('#modalTxTitle').textContent = isNew ? 'معاملة جديدة' : 'تعديل معاملة رقم ' + t.id;
   const form = $('#formTx');
-  form.date.value = t.date; form.name.value = t.name || ''; form.type.value = t.type; form.amt.value = t.amt || ''; form.fee.value = t.fee || 0; form.code.value = t.code || ''; form.qty.value = t.qty || ''; form.price.value = t.price || ''; form.note.value = t.note || ''; form.cur.value = t.cur || 'EGP';
+  form.date.value = t.date; form.elements.namedItem('name').value = t.name || ''; form.type.value = t.type; form.amt.value = t.amt || ''; form.fee.value = t.fee || 0; form.code.value = t.code || ''; form.qty.value = t.qty || ''; form.price.value = t.price || ''; form.note.value = t.note || ''; form.cur.value = t.cur || 'EGP';
   fillSelect($('#txCat'), ALLC, t.cat); fillSelect($('#txAcc'), S.accounts.map(a => a.code), t.acc); fillSelect($('#txPay'), PAY, t.pay);
   new bootstrap.Modal($('#modalTx')).show();
 }
@@ -432,7 +540,13 @@ $('#formTx').addEventListener('submit', async e => {
   const wasEditing = Boolean(editingTx);
   const oldTx = wasEditing ? { ...editingTx } : null;
   const t = editingTx ? { ...editingTx } : { id: Math.max(0, ...S.tx.map(x => +x.id)) + 1 };
-  Object.assign(t, { date: d.date, name: d.name, type: d.type, cat: d.cat, amt: +d.amt, fee: +d.fee || 0, acc: d.acc, pay: d.pay, code: d.code || '', qty: d.qty === '' ? '' : +d.qty, price: d.price === '' ? '' : +d.price, note: d.note || '', cur: d.cur || 'EGP', sub: t.sub || '' });
+  const previousGoogleNotes = wasEditing ? googleNotes(oldTx) : '';
+  const noteChanged = wasEditing && String(d.note || '') !== String(oldTx.note || '');
+  const nameChanged = wasEditing && String(d.name || '') !== String(oldTx.name || '');
+  let notesForGoogle = String(d.note || d.name || '').trim();
+  if (wasEditing && !noteChanged && !nameChanged) notesForGoogle = previousGoogleNotes || notesForGoogle;
+  else if (wasEditing && !noteChanged && nameChanged) notesForGoogle = String(d.name || d.note || '').trim();
+  Object.assign(t, { date: d.date, name: d.name, type: d.type, cat: d.cat, amt: +d.amt, fee: +d.fee || 0, acc: d.acc, pay: d.pay, code: d.code || '', qty: d.qty === '' ? '' : +d.qty, price: d.price === '' ? '' : +d.price, note: d.note || '', googleNotes: notesForGoogle, cur: d.cur || 'EGP', sub: t.sub || '' });
   const ids = {};
   S.tx.filter(x => !wasEditing || x.id !== oldTx.id).forEach(x => ids[x.id] = (ids[x.id] || 0) + 1);
   const validation = status(t, ids);
@@ -443,6 +557,7 @@ $('#formTx').addEventListener('submit', async e => {
     // The current Apps Script API shown in this project has no confirmed update-by-ID endpoint.
     // Use its existing delete action before re-adding, and try to restore the old row on failure.
     if (wasEditing) {
+      if (hasAmbiguousGoogleDelete(oldTx)) throw new Error('توجد معاملة أخرى بنفس التاريخ والملاحظات؛ لا يمكن التعديل بأمان عبر واجهة Google الحالية. غيّر الملاحظات أو حدّث واجهة Apps Script لمعرّف فريد.');
       await deleteTransactionFromGoogle(oldTx);
       oldGoogleRowDeleted = true;
     }
@@ -460,7 +575,7 @@ $('#formTx').addEventListener('submit', async e => {
       catch (restoreError) { console.error('تعذر استرجاع الصف السابق في Google Sheets:', restoreError); }
     }
     console.error('فشل حفظ المعاملة في Google Sheets:', error);
-    alert('لم يتم تأكيد العملية في Google Sheets. لم أغيّر النسخة المحلية. إذا كنت تعدّل معاملة، راجع ورقة Google Sheets للتأكد من بقاء الصف السابق.');
+    alert('لم يتم تأكيد العملية في Google Sheets. لم أغيّر النسخة المحلية. ' + (error && error.message ? error.message : 'إذا كنت تعدّل معاملة، راجع ورقة Google Sheets للتأكد من بقاء الصف السابق.'));
   }
 });
 
@@ -485,7 +600,7 @@ document.addEventListener('click', e => {
   if (tab) { S.ui.tab = tab.dataset.tab; save(); render(); return; }
   if (e.target.closest('#btnAddTx')) { openTx(); return; }
   if (e.target.closest('#btnAddAcc')) { $('#formAcc').reset(); new bootstrap.Modal($('#modalAcc')).show(); return; }
-  if (e.target.closest('#btnAddPrice')) { $('#formPrice').reset(); $('#formPrice').date.value = new Date().toISOString().slice(0, 10); new bootstrap.Modal($('#modalPrice')).show(); return; }
+  if (e.target.closest('#btnAddPrice')) { $('#formPrice').reset(); $('#formPrice').date.value = localISODate(); new bootstrap.Modal($('#modalPrice')).show(); return; }
   const editBtn = e.target.closest('[data-edit]');
   if (editBtn) { openTx(S.tx.find(t => t.id == editBtn.dataset.edit)); return; }
   
@@ -495,6 +610,10 @@ document.addEventListener('click', e => {
     if (confirm('حذف المعاملة رقم ' + delBtn.dataset.del + '؟')) {
       const txToDelete = S.tx.find(t => String(t.id) === String(delBtn.dataset.del));
       if (txToDelete) {
+        if (hasAmbiguousGoogleDelete(txToDelete)) {
+          alert('لا يمكن حذف المعاملة بأمان لأن هناك معاملة أخرى لها التاريخ والملاحظات نفسيهما، وواجهة Google الحالية لا تملك معرّفاً فريداً للحذف. غيّر الملاحظات أو حدّث Apps Script أولاً.');
+          return;
+        }
         deleteTransactionFromGoogle(txToDelete).then(() => {
           S.tx = S.tx.filter(t => String(t.id) !== String(delBtn.dataset.del));
           save(); render();
@@ -507,7 +626,7 @@ document.addEventListener('click', e => {
     return;
   }
   if (e.target.closest('#btnTheme')) { const cur = document.documentElement.getAttribute('data-theme'); const next = cur === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', next); S.ui.theme = next; save(); render(); return; }
-  if (e.target.closest('#btnExp')) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' })); a.download = 'نسخة_احتياطية_' + new Date().toISOString().slice(0, 10) + '.json'; a.click(); return; }
+  if (e.target.closest('#btnExp')) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' })); a.download = 'نسخة_احتياطية_' + localISODate() + '.json'; a.click(); return; }
   if (e.target.closest('#btnCsv')) { const h = ['id', 'date', 'name', 'cat', 'sub', 'type', 'amt', 'fee', 'cur', 'pay', 'acc', 'code', 'qty', 'price', 'note']; const rows = [h, ...S.tx.map(t => h.map(k => '"' + String(t[k] ?? '').replace(/"/g, '""') + '"'))]; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' })); a.download = 'المعاملات.csv'; a.click(); return; }
   if (e.target.closest('#btnImp')) { $('#fileImport').click(); return; }
   if (e.target.closest('#btnReset')) { if (confirm('سيتم تصفير البيانات المحلية فقط. لن يتم حذف أي شيء من Google Sheets. هل تريد المتابعة؟')) { S = seed(); save(); loadDataFromGoogle(); render(); } }
@@ -517,19 +636,17 @@ document.addEventListener('change', e => {
   const x = e.target;
   if (x.id === 'fy') { S.ui.y = +x.value; save(); render(); return; }
   if (x.id === 'fm') { S.ui.m = x.value; save(); render(); return; }
-  if (x.dataset.s) { const r = S[x.dataset.s][x.dataset.i]; const k = x.dataset.k; r[k] = x.type === 'checkbox' ? (x.checked ? 1 : 0) : x.type === 'number' ? +x.value : x.value; if (x.dataset.s === 'prices' && k === 'price' && !r.date) r.date = new Date().toISOString().slice(0, 10); save(); render(); return; }
+  if (x.dataset.s) { const r = S[x.dataset.s][x.dataset.i]; const k = x.dataset.k; r[k] = x.type === 'checkbox' ? (x.checked ? 1 : 0) : x.type === 'number' ? +x.value : x.value; if (x.dataset.s === 'prices' && k === 'price' && !r.date) r.date = localISODate(); save(); render(); return; }
   if (x.dataset.b) { S.budget[x.dataset.b] = (+x.value || 0) / 100; save(); render(); return; }
   if (x.dataset.w) { S.warn = (+x.value || 90) / 100; save(); render(); return; }
-  if (x.dataset.r) { S.rates[x.dataset.r] = +x.value || 1; save(); render(); return; }
+  if (x.dataset.r) { const rate = Number(x.value); if (!Number.isFinite(rate) || rate <= 0) { alert('سعر الصرف يجب أن يكون رقماً أكبر من صفر.'); render(); return; } S.rates[x.dataset.r] = rate; save(); render(); return; }
   if (x.id === 'fileImport') {
     const r = new FileReader();
     r.onload = () => {
       try {
         const d = JSON.parse(r.result);
-        if (!d.tx || !d.accounts) throw 0;
-        S = d;
-        if (!S.rates) S.rates = { EGP: 1, SAR: 12.9, USD: 48.5 };
-        S.tx.forEach(t => { if (!t.cur) t.cur = 'EGP'; });
+        if (!d || typeof d !== 'object' || !Array.isArray(d.tx) || !Array.isArray(d.accounts)) throw new Error('بنية الملف غير صحيحة');
+        S = normalizeState(d);
         save(); render();
       } catch (_) { alert('الملف غير صالح'); }
     };
