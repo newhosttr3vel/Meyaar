@@ -1265,8 +1265,9 @@ function openTransfer(tx = null) {
   editingTransfer = null;
   if (tx) {
     const pair = getTransferPair(tx);
-    if (!pair || !pair.outgoing || !pair.incoming || pair.rows.length !== 2) {
-      alert('هذا التحويل غير مكتمل الطرفين. احذف الطرف الموجود من زر الحذف ثم سجّل التحويل من جديد حتى لا تتغير الأرصدة بالخطأ.');
+    if (!pair || !pair.outgoing || !pair.incoming || pair.rows.length !== 2 ||
+        String(pair.outgoing.id) === String(pair.incoming.id)) {
+      alert('هذا التحويل غير مكتمل الطرفين أو يحتوي على أرقام مكررة. احذف التحويل المرتبط من زر الحذف ثم سجّله من جديد حتى لا تتغير الأرصدة بالخطأ.');
       return;
     }
     editingTransfer = pair;
