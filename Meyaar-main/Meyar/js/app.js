@@ -46,11 +46,6 @@ function sameRemoteCore(tx, remote) {
     Math.abs(Number(tx.amt) - remote.amt) < 0.005;
 }
 
-function hasAmbiguousGoogleDelete(tx) {
-  return S.tx.some(other => String(other.id) !== String(tx.id) &&
-    String(other.date || '') === String(tx.date || '') && googleNotes(other) === googleNotes(tx));
-}
-
 // Google currently stores only Date, Type, Amount, Category and Notes.
 // Merge those rows into local records instead of replacing richer local records with partial data.
 async function loadDataFromGoogle() {
@@ -571,7 +566,8 @@ $('#formTx').addEventListener('submit', async e => {
     // The current Apps Script API shown in this project has no confirmed update-by-ID endpoint.
     // Use its existing delete action before re-adding, and try to restore the old row on failure.
     if (wasEditing) {
-      if (hasAmbiguousGoogleDelete(oldTx)) throw new Error('توجد معاملة أخرى بنفس التاريخ والملاحظات؛ لا يمكن التعديل بأمان عبر واجهة Google الحالية. غيّر الملاحظات أو حدّث واجهة Apps Script لمعرّف فريد.');
+      // Google Apps Script compares the complete identity supplied by deleteTransactionFromGoogle
+      // and refuses deletion when more than one sheet row matches.
       await deleteTransactionFromGoogle(oldTx);
       oldGoogleRowDeleted = true;
     }
@@ -624,10 +620,8 @@ document.addEventListener('click', e => {
     if (confirm('حذف المعاملة رقم ' + delBtn.dataset.del + '؟')) {
       const txToDelete = S.tx.find(t => String(t.id) === String(delBtn.dataset.del));
       if (txToDelete) {
-        if (hasAmbiguousGoogleDelete(txToDelete)) {
-          alert('لا يمكن حذف المعاملة بأمان لأن هناك معاملة أخرى لها التاريخ والملاحظات نفسيهما، وواجهة Google الحالية لا تملك معرّفاً فريداً للحذف. غيّر الملاحظات أو حدّث Apps Script أولاً.');
-          return;
-        }
+        // Let Google Apps Script match Date + Type + Amount + Category + Notes.
+        // The backend deletes only an exact single match and refuses ambiguous requests.
         deleteTransactionFromGoogle(txToDelete).then(() => {
           S.tx = S.tx.filter(t => String(t.id) !== String(delBtn.dataset.del));
           save(); render();
