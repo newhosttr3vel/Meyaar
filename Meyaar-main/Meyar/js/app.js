@@ -19,11 +19,33 @@ const COL = ['#0d9488', '#d97706', '#6366f1', '#dc2626', '#8b5cf6', '#16a34a', '
 const CURS = { EGP: 'ج.م', SAR: 'ر.س', USD: '$' };
 
 const API_URL = "https://script.google.com/macros/s/AKfycbwJI2_IFB0ukOs1Ufko0wuLob2eAEIFLaPwsglNAeWnMdCUB_7euqWGV4xGzVBH1SflzQ/exec";
+const SHARED_SYNC_INTERVAL_MS = 45000;
+let cloudSettingsInitialized = false;
+let cloudSettingsStatus = 'لم يتم تحميل إعدادات المزامنة بعد';
+let cloudSettingsLastUpdated = '';
+let cloudSettingsSyncTimer = null;
+let cloudSettingsSyncInFlight = false;
 
-// Google Sheets currently contains only a partial transaction schema. Preserve richer local records during sync.
+// The Notes column is the shared display text because the sheet has no separate Name column.
 function googleNotes(tx) {
   if (!tx) return '';
   return String(tx.googleNotes !== undefined ? tx.googleNotes : ((tx.note || tx.name) || '')).trim();
+}
+
+function numericCell(value, fallback = '') {
+  if (value === '' || value === null || value === undefined) return fallback;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function sharedSettingsPayload() {
+  return {
+    rates: S.rates,
+    budget: S.budget,
+    warn: S.warn,
+    accounts: S.accounts,
+    prices: S.prices
+  };
 }
 
 function localISODate(date = new Date()) {
@@ -57,15 +79,20 @@ function sameRemoteCore(tx, remote) {
 
 // Google currently stores only Date, Type, Amount, Category and Notes.
 // Merge those rows into local records instead of replacing richer local records with partial data.
-async function loadDataFromGoogle() {
+async function loadDataFromGoogle({ renderAfter = true } = {}) {
   try {
     const response = await fetch(API_URL, { method: 'GET', cache: 'no-store' });
     if (!response.ok) throw new Error('Google Sheets HTTP ' + response.status);
     const data = await response.json();
-    if (!Array.isArray(data)) throw new Error('صيغة البيانات القادمة من Google Sheets غير صحيحة');
+    if (!Array.isArray(data)) {
+      throw new Error(data && (data.message || data.error) || 'صيغة البيانات القادمة من Google Sheets غير صحيحة');
+    }
 
     const firstRow = Array.isArray(data[0]) ? data[0].map(v => String(v || '').trim().toLowerCase()) : [];
-    const hasHeaders = firstRow.some(v => ['date', 'type', 'amount', 'category', 'notes'].includes(v));
+    const hasHeaders = firstRow.includes('date') && firstRow.includes('type') &&
+      firstRow.includes('amount') && firstRow.includes('category');
+    const hasFullSchema = ['account', 'payment', 'currency', 'fee', 'assetcode', 'quantity', 'price']
+      .every(header => firstRow.includes(header));
     const rows = data.slice(hasHeaders ? 1 : 0).filter(row =>
       Array.isArray(row) && row.some(cell => String(cell ?? '').trim() !== '')
     );
@@ -87,12 +114,24 @@ async function loadDataFromGoogle() {
       const cat = String(row[3] || 'أخرى').trim();
       const notes = String(row[4] || '').trim();
       if (!isValidISODate(date) || !Number.isFinite(amount) || amount <= 0) return;
+
       const remote = { date, type, amt: amount, cat, notes };
       let match = localPool.find(item => !item.used && sameRemoteCore(item.tx, remote) && googleNotes(item.tx) === notes);
       if (!match) {
         const candidates = localPool.filter(item => !item.used && sameRemoteCore(item.tx, remote));
         if (candidates.length === 1) match = candidates[0];
       }
+
+      const remoteDetails = {
+        acc: hasFullSchema ? String(row[5] || 'CASH') : '',
+        pay: hasFullSchema ? String(row[6] || 'نقدي') : '',
+        cur: hasFullSchema ? String(row[7] || 'EGP') : '',
+        fee: hasFullSchema ? numericCell(row[8], 0) : '',
+        code: hasFullSchema ? String(row[9] || '') : '',
+        qty: hasFullSchema ? numericCell(row[10], '') : '',
+        price: hasFullSchema ? numericCell(row[11], '') : ''
+      };
+
       if (match) {
         match.used = true;
         const tx = { ...match.tx, date, type, amt: amount, cat, googleNotes: notes };
@@ -101,24 +140,46 @@ async function loadDataFromGoogle() {
           if (!match.tx.name || match.tx.name === previousNotes) tx.name = notes;
           if (!match.tx.note || match.tx.note === previousNotes) tx.note = notes;
         }
+        if (hasFullSchema) {
+          tx.acc = remoteDetails.acc;
+          tx.pay = remoteDetails.pay;
+          tx.cur = remoteDetails.cur;
+          tx.fee = remoteDetails.fee;
+          tx.code = remoteDetails.code;
+          tx.qty = remoteDetails.qty;
+          tx.price = remoteDetails.price;
+        } else {
+          tx.acc = match.tx.acc || 'CASH';
+          tx.pay = match.tx.pay || 'نقدي';
+          tx.cur = match.tx.cur || 'EGP';
+          tx.fee = fee(match.tx);
+          tx.code = match.tx.code || '';
+          tx.qty = match.tx.qty ?? '';
+          tx.price = match.tx.price ?? '';
+        }
         imported.push(tx);
       } else {
-        const id = allocateId();
-        imported.push({ id, date, type, amt: amount, cat, note: notes, googleNotes: notes,
-          name: notes || 'معاملة من Google Sheets', fee: 0, pay: 'نقدي', acc: 'CASH',
-          code: '', qty: '', price: '', sub: '', cur: 'EGP' });
+        imported.push({
+          id: allocateId(), date, type, amt: amount, cat,
+          note: notes, googleNotes: notes, name: notes || 'معاملة من Google Sheets',
+          fee: hasFullSchema ? remoteDetails.fee : 0,
+          pay: hasFullSchema ? remoteDetails.pay : 'نقدي',
+          acc: hasFullSchema ? remoteDetails.acc : 'CASH',
+          code: hasFullSchema ? remoteDetails.code : '',
+          qty: hasFullSchema ? remoteDetails.qty : '',
+          price: hasFullSchema ? remoteDetails.price : '',
+          sub: '', cur: hasFullSchema ? remoteDetails.cur : 'EGP'
+        });
       }
     });
 
-    // Keep local-only rows: a partial/empty remote response must never erase local financial details.
     const localOnly = localPool.filter(item => !item.used).map(item => item.tx);
     S.tx = [...localOnly, ...imported];
     save();
   } catch (error) {
     console.error('تعذر تحميل المعاملات من Google Sheets:', error);
-    // Keep the last local snapshot if the network or Google service fails.
   } finally {
-    if (typeof render === 'function') render();
+    if (renderAfter && typeof render === 'function') render();
   }
 }
 
@@ -143,14 +204,119 @@ async function postGooglePayload(payload) {
   return result;
 }
 
+async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
+  try {
+    const response = await fetch(API_URL + '?action=state&_=' + Date.now(), {
+      method: 'GET',
+      cache: 'no-store'
+    });
+    if (!response.ok) throw new Error('Google Sheets HTTP ' + response.status);
+    const result = await response.json();
+
+    // Older Apps Script deployments return the transaction array for every GET.
+    if (!result || Array.isArray(result) || result.success === false ||
+        !Object.prototype.hasOwnProperty.call(result, 'state')) {
+      if (result && result.success === false) {
+        throw new Error(result.message || result.error || 'تعذر قراءة الإعدادات المشتركة');
+      }
+      cloudSettingsStatus = 'خدمة Google تحتاج تحديثًا لدعم مزامنة الإعدادات';
+      return false;
+    }
+
+    if (!result.state) {
+      cloudSettingsInitialized = false;
+      cloudSettingsStatus = 'لم تُحفظ الإعدادات المشتركة بعد. افتح النظام على جهازك الأساسي واضغط «مزامنة إعدادات هذا الجهاز».';
+      return true;
+    }
+
+    const remote = result.state;
+    S = normalizeState({
+      ...S,
+      ...remote,
+      ui: S.ui,
+      tx: S.tx
+    });
+    cloudSettingsInitialized = true;
+    cloudSettingsLastUpdated = result.updatedAt || remote.updatedAt || '';
+    cloudSettingsStatus = 'تم تحميل الإعدادات المشتركة من Google Sheets' +
+      (cloudSettingsLastUpdated ? ' — ' + cloudSettingsLastUpdated : '');
+    save();
+    if (renderAfter && S.ui.tab === 'set') render();
+    return true;
+  } catch (error) {
+    cloudSettingsStatus = 'تعذرت مزامنة الإعدادات: ' +
+      (error && error.message ? error.message : String(error));
+    console.error('تعذر تحميل الإعدادات المشتركة من Google Sheets:', error);
+    return false;
+  }
+}
+
+async function saveSharedSettingsToGoogle({ manual = false } = {}) {
+  if (cloudSettingsSyncInFlight) return false;
+  cloudSettingsSyncInFlight = true;
+  cloudSettingsStatus = 'جارٍ حفظ الإعدادات المشتركة…';
+  if (S.ui.tab === 'set') render();
+
+  try {
+    const result = await postGooglePayload({
+      action: 'savestate',
+      state: sharedSettingsPayload()
+    });
+    if (!result || result.success === false || result.status === 'error') {
+      throw new Error((result && (result.message || result.error)) || 'لم تؤكد Google حفظ الإعدادات');
+    }
+    cloudSettingsInitialized = true;
+    cloudSettingsLastUpdated = result.updatedAt || new Date().toISOString();
+    cloudSettingsStatus = 'تمت مزامنة الإعدادات مع Google Sheets';
+    save();
+    if (S.ui.tab === 'set') render();
+    return true;
+  } catch (error) {
+    cloudSettingsStatus = 'فشلت مزامنة الإعدادات: ' +
+      (error && error.message ? error.message : String(error));
+    console.error('فشلت مزامنة الإعدادات المشتركة:', error);
+    if (manual) {
+      alert(cloudSettingsStatus +
+        '\\nتأكد من تحديث ونشر كود Google Apps Script الداعم لـ savestate.');
+    }
+    if (S.ui.tab === 'set') render();
+    return false;
+  } finally {
+    cloudSettingsSyncInFlight = false;
+  }
+}
+
+function scheduleSharedSettingsSync() {
+  // First cloud initialization must be explicit so a new device's defaults
+  // cannot overwrite the settings that already exist on the primary device.
+  if (!cloudSettingsInitialized) return;
+  if (cloudSettingsSyncTimer) clearTimeout(cloudSettingsSyncTimer);
+  cloudSettingsSyncTimer = setTimeout(() => {
+    cloudSettingsSyncTimer = null;
+    saveSharedSettingsToGoogle();
+  }, 700);
+}
+
+
 async function saveTransactionToGoogle(tx) {
   const dataToSend = {
     Date: tx.date ? String(tx.date).substring(0, 10) : '',
-    Type: tx.type, Amount: tx.amt, Category: tx.cat,
-    Notes: googleNotes(tx) || tx.name
+    Type: tx.type,
+    Amount: Number(tx.amt),
+    Category: tx.cat,
+    Notes: googleNotes(tx) || tx.name,
+    Account: tx.acc || 'CASH',
+    Payment: tx.pay || 'نقدي',
+    Currency: tx.cur || 'EGP',
+    Fee: fee(tx),
+    AssetCode: tx.code || '',
+    Quantity: tx.qty === '' || tx.qty === null || tx.qty === undefined ? '' : Number(tx.qty),
+    Price: tx.price === '' || tx.price === null || tx.price === undefined ? '' : Number(tx.price)
   };
   const result = await postGooglePayload(dataToSend);
-  if (result.status && result.status !== 'success') throw new Error(result.message || 'لم يتم تأكيد الحفظ في Google Sheets');
+  if (result && (result.status === 'error' || result.success === false)) {
+    throw new Error(result.message || result.error || 'لم يتم تأكيد الحفظ في Google Sheets');
+  }
   return result;
 }
 
@@ -161,7 +327,15 @@ async function deleteTransactionFromGoogle(tx) {
   const result = await postGooglePayload({
     action: 'delete',
     Date: tx.date, Type: tx.type, Amount: Number(tx.amt), Category: tx.cat, Notes: notes,
-    date: tx.date, type: tx.type, amount: Number(tx.amt), category: tx.cat, notes
+    Account: tx.acc || 'CASH', Payment: tx.pay || 'نقدي', Currency: tx.cur || 'EGP',
+    Fee: fee(tx), AssetCode: tx.code || '',
+    Quantity: tx.qty === '' || tx.qty === null || tx.qty === undefined ? '' : Number(tx.qty),
+    Price: tx.price === '' || tx.price === null || tx.price === undefined ? '' : Number(tx.price),
+    date: tx.date, type: tx.type, amount: Number(tx.amt), category: tx.cat, notes,
+    account: tx.acc || 'CASH', payment: tx.pay || 'نقدي', currency: tx.cur || 'EGP',
+    fee: fee(tx), assetCode: tx.code || '',
+    quantity: tx.qty === '' || tx.qty === null || tx.qty === undefined ? '' : Number(tx.qty),
+    price: tx.price === '' || tx.price === null || tx.price === undefined ? '' : Number(tx.price)
   });
   if (result && (result.found === false || result.deleted === false || result.success === false || result.status === 'error')) {
     throw new Error(result.message || result.error || 'خدمة Google لم تؤكد حذف الصف. قد يكون التاريخ أو الملاحظات غير مطابقين للصف، أو قد لا تدعم الخدمة الحذف بالحقول الحالية.');
@@ -506,7 +680,8 @@ function vSet() {
   return `
   <div class="row g-3"><div class="col-lg-6"><div class="box"><h3><i class="bi bi-sliders"></i> نسب الميزانية</h3><table class="table mb-0">${CATS.map(c => `<tr><td>${c}</td><td style="width:120px"><div class="input-group input-group-sm"><input type="number" class="form-control" data-b="${c}" min="0" max="100" step="1" value="${Math.round(S.budget[c] * 100)}"><span class="input-group-text">%</span></div></td></tr>`).join('')}<tr><th>المجموع</th><th style="color:var(--${Math.abs(t - 1) < 0.001 ? 'ok' : 'red'})">${pc(t)}</th></tr><tr><td>حد التحذير</td><td><div class="input-group input-group-sm"><input type="number" class="form-control" data-w="1" min="1" max="100" value="${Math.round(S.warn * 100)}"><span class="input-group-text">%</span></div></td></tr></table></div></div>
   <div class="col-lg-6"><div class="box"><h3><i class="bi bi-currency-exchange"></i> أسعار الصرف (إلى الجنيه)</h3><table class="table mb-0"><tr><td>ريال سعودي (SAR)</td><td style="width:140px"><input type="number" step="any" class="form-control form-control-sm" data-r="SAR" value="${S.rates.SAR}"></td></tr><tr><td>دولار أمريكي (USD)</td><td><input type="number" step="any" class="form-control form-control-sm" data-r="USD" value="${S.rates.USD}"></td></tr><tr><td>جنيه مصري (EGP)</td><td><input type="number" class="form-control form-control-sm" value="1" disabled></td></tr></table><p class="note mt-2 mb-0">كل المعاملات تُحوَّل إلى الجنيه حسب هذه الأسعار عند الحساب.</p></div></div>
-  <div class="col-12"><div class="box"><h3><i class="bi bi-database"></i> البيانات</h3><p class="note">التفاصيل الكاملة (الحساب والعملة والرسوم والكمية والسعر) محفوظة محلياً في هذا المتصفح. مزامنة Google Sheets الحالية تحفظ التاريخ والنوع والمبلغ والتصنيف والملاحظات فقط؛ صدّر نسخة احتياطية دورياً.</p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnExp"><i class="bi bi-download"></i> تصدير JSON</button><button class="btn btn-outline-primary btn-sm" id="btnCsv"><i class="bi bi-filetype-csv"></i> تصدير CSV</button><button class="btn btn-outline-secondary btn-sm" id="btnImp"><i class="bi bi-upload"></i> استيراد</button><button class="btn btn-outline-danger btn-sm" id="btnReset"><i class="bi bi-arrow-counterclockwise"></i> استرجاع التجريبي</button></div></div></div></div>`;
+  <div class="col-12"><div class="box"><h3><i class="bi bi-cloud-arrow-up"></i> مزامنة الأجهزة</h3><p class="note">المعاملات تُقرأ وتُحفظ في DB_TRANSACTIONS، أما الحسابات وأسعار الأصول وأسعار الصرف ونسب الميزانية فتحتاج حفظًا مشتركًا في Google Sheets حتى تظهر على كل الأجهزة. أول مرة، اضغط الزر من الجهاز الذي يحتوي على إعداداتك الصحيحة؛ وبعدها ستُحمّل الإعدادات تلقائيًا على بقية الأجهزة.</p><p class="small mb-2" id="cloudSyncStatus">${esc(cloudSettingsStatus)}</p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnSyncSettings"><i class="bi bi-cloud-check"></i> مزامنة إعدادات هذا الجهاز</button><button class="btn btn-outline-secondary btn-sm" id="btnReloadCloud"><i class="bi bi-arrow-repeat"></i> تحميل الإعدادات من السحابة</button></div></div></div>
+  <div class="col-12"><div class="box"><h3><i class="bi bi-database"></i> النسخ الاحتياطي</h3><p class="note">تقدر تصدّر نسخة JSON أو CSV، وتستخدمها لاسترجاع البيانات عند الحاجة.</p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnExp"><i class="bi bi-download"></i> تصدير JSON</button><button class="btn btn-outline-primary btn-sm" id="btnCsv"><i class="bi bi-filetype-csv"></i> تصدير CSV</button><button class="btn btn-outline-secondary btn-sm" id="btnImp"><i class="bi bi-upload"></i> استيراد</button><button class="btn btn-outline-danger btn-sm" id="btnReset"><i class="bi bi-arrow-counterclockwise"></i> استرجاع التجريبي</button></div></div></div>`;
 }
 
 function vAud(c) {
@@ -615,7 +790,7 @@ $('#formAcc').addEventListener('submit', e => {
   const d = Object.fromEntries(new FormData(e.target));
   if (S.accounts.some(a => a.code === d.code)) { alert('الرمز موجود مسبقاً'); return; }
   S.accounts.push({ code: d.code, name: d.name, type: d.type || 'نقد', open: +d.open || 0, liq: d.liq ? 1 : 0 });
-  save(); bootstrap.Modal.getInstance($('#modalAcc')).hide(); render();
+  save(); scheduleSharedSettingsSync(); bootstrap.Modal.getInstance($('#modalAcc')).hide(); render();
 });
 
 $('#formPrice').addEventListener('submit', e => {
@@ -623,13 +798,15 @@ $('#formPrice').addEventListener('submit', e => {
   const d = Object.fromEntries(new FormData(e.target));
   if (S.prices.some(p => p.code === d.code)) { alert('الرمز موجود مسبقاً'); return; }
   S.prices.push({ code: d.code, cat: d.cat, price: +d.price || 0, date: d.date || '' });
-  save(); bootstrap.Modal.getInstance($('#modalPrice')).hide(); render();
+  save(); scheduleSharedSettingsSync(); bootstrap.Modal.getInstance($('#modalPrice')).hide(); render();
 });
 
 document.addEventListener('click', e => {
   const tab = e.target.closest('[data-tab]');
   if (tab) { S.ui.tab = tab.dataset.tab; save(); render(); return; }
   if (e.target.closest('#btnAddTx')) { openTx(); return; }
+  if (e.target.closest('#btnSyncSettings')) { saveSharedSettingsToGoogle({ manual: true }); return; }
+  if (e.target.closest('#btnReloadCloud')) { loadSharedSettingsFromGoogle().then(() => render()); return; }
   if (e.target.closest('#btnAddAcc')) { $('#formAcc').reset(); new bootstrap.Modal($('#modalAcc')).show(); return; }
   if (e.target.closest('#btnAddPrice')) { $('#formPrice').reset(); $('#formPrice').date.value = localISODate(); new bootstrap.Modal($('#modalPrice')).show(); return; }
   const editBtn = e.target.closest('[data-edit]');
@@ -666,10 +843,10 @@ document.addEventListener('change', e => {
   const x = e.target;
   if (x.id === 'fy') { S.ui.y = +x.value; save(); render(); return; }
   if (x.id === 'fm') { S.ui.m = x.value; save(); render(); return; }
-  if (x.dataset.s) { const r = S[x.dataset.s][x.dataset.i]; const k = x.dataset.k; r[k] = x.type === 'checkbox' ? (x.checked ? 1 : 0) : x.type === 'number' ? +x.value : x.value; if (x.dataset.s === 'prices' && k === 'price' && !r.date) r.date = localISODate(); save(); render(); return; }
-  if (x.dataset.b) { S.budget[x.dataset.b] = (+x.value || 0) / 100; save(); render(); return; }
-  if (x.dataset.w) { S.warn = (+x.value || 90) / 100; save(); render(); return; }
-  if (x.dataset.r) { const rate = Number(x.value); if (!Number.isFinite(rate) || rate <= 0) { alert('سعر الصرف يجب أن يكون رقماً أكبر من صفر.'); render(); return; } S.rates[x.dataset.r] = rate; save(); render(); return; }
+  if (x.dataset.s) { const r = S[x.dataset.s][x.dataset.i]; const k = x.dataset.k; r[k] = x.type === 'checkbox' ? (x.checked ? 1 : 0) : x.type === 'number' ? +x.value : x.value; if (x.dataset.s === 'prices' && k === 'price' && !r.date) r.date = localISODate(); save(); if (x.dataset.s === 'accounts' || x.dataset.s === 'prices') scheduleSharedSettingsSync(); render(); return; }
+  if (x.dataset.b) { S.budget[x.dataset.b] = (+x.value || 0) / 100; save(); scheduleSharedSettingsSync(); render(); return; }
+  if (x.dataset.w) { S.warn = (+x.value || 90) / 100; save(); scheduleSharedSettingsSync(); render(); return; }
+  if (x.dataset.r) { const rate = Number(x.value); if (!Number.isFinite(rate) || rate <= 0) { alert('سعر الصرف يجب أن يكون رقماً أكبر من صفر.'); render(); return; } S.rates[x.dataset.r] = rate; save(); scheduleSharedSettingsSync(); render(); return; }
   if (x.id === 'fileImport') {
     const r = new FileReader();
     r.onload = () => {
@@ -677,7 +854,7 @@ document.addEventListener('change', e => {
         const d = JSON.parse(r.result);
         if (!d || typeof d !== 'object' || !Array.isArray(d.tx) || !Array.isArray(d.accounts)) throw new Error('بنية الملف غير صحيحة');
         S = normalizeState(d);
-        save(); render();
+        save(); scheduleSharedSettingsSync(); render();
       } catch (_) { alert('الملف غير صالح'); }
     };
     r.readAsText(x.files[0]);
@@ -698,4 +875,18 @@ if (S.ui.theme === 'dark') document.documentElement.setAttribute('data-theme', '
 else document.documentElement.setAttribute('data-theme', 'light');
 
 render();
-loadDataFromGoogle();
+
+(async function initializeCloudData() {
+  // Load the shared settings first so custom account codes exist before auditing transactions.
+  await loadSharedSettingsFromGoogle({ renderAfter: false });
+  await loadDataFromGoogle({ renderAfter: false });
+  render();
+})();
+
+// Reload shared settings and transactions while the page stays open.
+setInterval(async () => {
+  if (document.visibilityState !== 'visible') return;
+  await loadSharedSettingsFromGoogle({ renderAfter: false });
+  await loadDataFromGoogle({ renderAfter: false });
+  render();
+}, SHARED_SYNC_INTERVAL_MS);
