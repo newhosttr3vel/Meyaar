@@ -1234,6 +1234,10 @@ function updateTransferPreview() {
   const fromCode = form.elements.namedItem('from').value, toCode = form.elements.namedItem('to').value;
   const cur = form.elements.namedItem('cur').value || 'EGP';
   const amount = Number(form.elements.namedItem('amount').value);
+  if (fromCode && toCode && fromCode === toCode) {
+    preview.innerHTML = '<div class="transfer-preview-warning"><i class="bi bi-exclamation-triangle"></i> اختار حسابين مختلفين؛ لا يمكن التحويل من الحساب إلى نفسه.</div>';
+    return;
+  }
   const feeAmount = Number(form.elements.namedItem('fee').value) || 0;
   const rate = rateForDate(cur, date);
   const sent = Math.max(0, Number.isFinite(amount) ? amount : 0);
