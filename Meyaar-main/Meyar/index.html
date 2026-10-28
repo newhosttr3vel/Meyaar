@@ -28,7 +28,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link href="css/style.css?v=20261028-brand1" rel="stylesheet">
+  <link href="css/style.css?v=20261028-finance1" rel="stylesheet">
 </head>
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm">
@@ -116,6 +116,11 @@
                 <label class="form-label">طريقة الدفع</label>
                 <select class="form-select" name="pay" id="txPay"></select>
               </div>
+              <div class="col-12">
+                <div class="fx-preview" id="txFxPreview" aria-live="polite">
+                  <span class="note">سيظهر هنا سعر الصرف الساري وقيمة المعاملة بالجنيه.</span>
+                </div>
+              </div>
               <div class="col-6 col-md-4">
                 <label class="form-label">رمز الأصل <span class="text-muted">(اختياري)</span></label>
                 <input type="text" class="form-control" name="code" placeholder="مثال للسهم: COMI — الذهب يُحدد تلقائيًا">
@@ -134,14 +139,85 @@
               </div>
             </div>
             <div class="alert alert-info mt-3 mb-0 small">
-              <i class="bi bi-info-circle"></i> المبالغ تُحوَّل تلقائياً إلى الجنيه حسب أسعار الصرف في الإعدادات.
-              تفاصيل الأصل (الرمز والكمية وسعر الوحدة) اختيارية؛ اتركها فارغة لو عاوز تسجل قيمة الشراء أو البيع فقط.
-              عند عدم إدخال الكمية، لن تدخل المعاملة في حساب الكميات والأرباح الخاصة بالمحفظة.
+              <i class="bi bi-info-circle"></i> يستخدم مِعيار سعر الصرف الساري في تاريخ المعاملة، وليس بالضرورة سعر اليوم.
+              تفاصيل الأصل (الرمز والكمية وسعر الوحدة) اختيارية؛ لو تركتها فارغة، تُسجّل قيمة الشراء أو البيع فقط دون حساب الكمية والأرباح الخاصة بالمحفظة.
+              لنقل الأموال بين حساباتك استخدم «تحويل بين الحسابات» من صفحة المعاملات حتى يتحدث الحسابان معًا دون احتساب المبلغ كدخل أو مصروف.
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
             <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> حفظ</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="modalTransfer" tabindex="-1" aria-labelledby="modalTransferTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="modalTransferTitle">تحويل بين الحسابات</h5>
+            <p class="note mb-0 mt-1">حركة واحدة تنقل المبلغ بين حسابين معًا.</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+        </div>
+        <form id="formTransfer" class="tx-modal-form transfer-modal-form">
+          <div class="modal-body">
+            <div class="row g-3">
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="transferDate">تاريخ التحويل</label>
+                <input type="date" id="transferDate" class="form-control" name="date" required>
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="transferFrom">من حساب</label>
+                <select class="form-select" id="transferFrom" name="from" required></select>
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="transferTo">إلى حساب</label>
+                <select class="form-select" id="transferTo" name="to" required></select>
+              </div>
+              <div class="col-6 col-md-4">
+                <label class="form-label" for="transferAmount">المبلغ المحوّل</label>
+                <input type="number" id="transferAmount" class="form-control" name="amount" min="0.01" step="any" inputmode="decimal" placeholder="0.00" required>
+              </div>
+              <div class="col-6 col-md-4">
+                <label class="form-label" for="transferCurrency">العملة</label>
+                <select class="form-select" id="transferCurrency" name="cur">
+                  <option value="EGP">جنيه مصري (EGP)</option>
+                  <option value="SAR">ريال سعودي (SAR)</option>
+                  <option value="USD">دولار أمريكي (USD)</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-4">
+                <label class="form-label" for="transferFee">رسوم التحويل</label>
+                <input type="number" id="transferFee" class="form-control" name="fee" min="0" step="any" inputmode="decimal" value="0">
+              </div>
+              <div class="col-6 col-md-6">
+                <label class="form-label" for="transferPayment">طريقة التحويل</label>
+                <select class="form-select" id="transferPayment" name="pay"></select>
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label" for="transferNote">ملاحظة (اختياري)</label>
+                <input type="text" id="transferNote" class="form-control" name="note" maxlength="180" placeholder="مثال: تحويل من البنك إلى المحفظة">
+              </div>
+              <div class="col-12">
+                <div class="transfer-preview fx-preview" id="transferFxPreview" aria-live="polite">
+                  <span class="note">حدد الحسابين والمبلغ لمعاينة أثر التحويل.</span>
+                </div>
+              </div>
+              <div class="col-12">
+                <div class="alert alert-info small mb-0">
+                  <i class="bi bi-info-circle"></i>
+                  ينشئ مِعيار طرف الخصم وطرف الإضافة معًا. المبلغ لا يُضاف للدخل ولا للمصروفات؛ الرسوم فقط تُحسب كمصروف. يجب أن تكون عملة التحويل واحدة في الحسابين.
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+            <button type="submit" class="btn btn-primary" id="btnSaveTransfer"><i class="bi bi-arrow-left-right"></i> تنفيذ التحويل</button>
           </div>
         </form>
       </div>
@@ -231,6 +307,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="js/app.js?v=20261028-comfort2"></script>
+  <script src="js/app.js?v=20261028-finance1"></script>
 </body>
 </html>
