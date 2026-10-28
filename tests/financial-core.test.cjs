@@ -101,4 +101,19 @@ api.setState(makeState({ tx: [outgoing] }));
 api.calc();
 assert.equal(api.transferPairIssues(), 1, 'A transfer without its receiving side is flagged for audit');
 
+
+const htmlPath = path.join(__dirname, '..', 'Meyaar-main', 'Meyar', 'index.html');
+const html = fs.readFileSync(htmlPath, 'utf8');
+assert.match(html, /id="modalTransfer"/, 'The transfer modal exists');
+assert.match(html, /id="formTransfer" class="tx-modal-form transfer-modal-form"/, 'The transfer form uses the scrolling modal layout');
+assert.match(html, /name="from"/, 'The source account selector is present');
+assert.match(html, /name="to"/, 'The destination account selector is present');
+assert.match(html, /name="amount"/, 'The transfer amount field is present');
+assert.match(html, /id="transferFxPreview"/, 'The transfer preview is visible to the user');
+assert.match(html, /id="txFxPreview"/, 'The transaction FX preview is visible to the user');
+assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal opener exists');
+assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
+assert.match(html, /style\.css\?v=20261028-finance1/, 'Updated CSS cache version is active');
+assert.match(html, /app\.js\?v=20261028-finance1/, 'Updated JS cache version is active');
+
 console.log('Meyaar financial-core tests passed: dated FX, baseline migration, transfer accounting, and incomplete-pair audit.');
