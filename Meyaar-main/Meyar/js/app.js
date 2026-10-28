@@ -1574,10 +1574,16 @@ document.addEventListener('change', e => {
       render();
       return;
     }
+    const sharedSyncReady = cloudSettingsInitialized;
     save();
     scheduleSharedSettingsSync();
     render();
-    showAppToast('تم حفظ سعر الصرف التاريخي ومزامنته عند اكتمال الاتصال.', 5000);
+    showAppToast(
+      sharedSyncReady
+        ? 'تم حفظ سعر الصرف التاريخي. جارٍ مزامنة الإعدادات بين أجهزتك.'
+        : 'تم حفظ سعر الصرف على هذا الجهاز. لم تُهيّأ مزامنة الإعدادات المشتركة بعد؛ افتح الإعدادات وارفعها من الجهاز الأساسي.',
+      6500
+    );
     return;
   }
   if (x.id === 'fileImport') {
