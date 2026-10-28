@@ -774,3 +774,181 @@ button, .btn, .form-control, .form-select {
     background: transparent;
   }
 }
+
+
+/* =========================================================
+   UX refinement 2 — reliable modal scrolling and compact forms
+   ========================================================= */
+
+/* Let long content scroll inside its own panel rather than extending
+   the entire modal beyond the viewport. */
+.modal-dialog-scrollable {
+  display: flex;
+  max-height: calc(100% - var(--bs-modal-margin) * 2);
+}
+.modal-dialog-scrollable .modal-content {
+  min-height: 0;
+  overflow: hidden;
+}
+.modal-dialog-scrollable .modal-body {
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+.tx-modal-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.tx-modal-form .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.tx-modal-form .modal-footer {
+  flex: 0 0 auto;
+}
+.modal-title {
+  font-weight: 800;
+  line-height: 1.4;
+}
+.btn, .nav-link, .form-control, .form-select {
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease;
+}
+.form-control:disabled, .form-select:disabled {
+  opacity: .8;
+}
+.table-responsive {
+  max-width: 100%;
+}
+.box, .kpi-card, .hero-card {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 991.98px) {
+  .modal-dialog-scrollable {
+    max-height: 100%;
+  }
+  .modal-dialog-scrollable .modal-content {
+    max-height: 100%;
+  }
+}
+@media (max-width: 575.98px) {
+  /* A true flex column is essential because #formTx wraps both modal-body
+     and modal-footer. Without it, the body's overflow doesn't get a bounded height. */
+  #modalTx {
+    padding: 0 !important;
+    overflow: hidden;
+  }
+  #modalTx .modal-dialog,
+  #modalTx .modal-dialog.modal-lg,
+  #modalTx .modal-dialog.modal-dialog-scrollable {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+  }
+  #modalTx .modal-content {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 0;
+  }
+  #modalTx .tx-modal-form {
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto;
+    overflow: hidden;
+  }
+  #modalTx .tx-modal-form .modal-body {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: .85rem .9rem 1.15rem;
+  }
+  #modalTx .tx-modal-form .modal-body .row {
+    align-items: start;
+    --bs-gutter-x: .65rem;
+    --bs-gutter-y: .7rem;
+  }
+  #modalTx .tx-modal-form .form-control,
+  #modalTx .tx-modal-form .form-select {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: .55rem .65rem;
+    font-size: 16px;
+  }
+  #modalTx .tx-modal-form .form-label {
+    display: block;
+    min-height: 1.25em;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    margin-bottom: .3rem;
+  }
+  #modalTx .tx-modal-form .alert {
+    line-height: 1.55;
+    margin-top: .85rem !important;
+  }
+  #modalTx .tx-modal-form .modal-footer {
+    position: relative;
+    inset: auto;
+    z-index: 2;
+    display: flex;
+    gap: .65rem;
+    padding: .65rem .85rem calc(.65rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--bd);
+    background: var(--card);
+    box-shadow: 0 -6px 20px rgba(15, 23, 42, .08);
+  }
+  #modalTx .tx-modal-form .modal-footer .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 46px;
+  }
+  /* Keep account and asset-price dialogs scrollable on short phone screens too. */
+  #modalAcc .modal-dialog,
+  #modalPrice .modal-dialog {
+    max-height: calc(100dvh - 1rem);
+    margin: .5rem auto;
+  }
+  #modalAcc .modal-content,
+  #modalPrice .modal-content {
+    max-height: calc(100dvh - 1rem);
+    overflow-y: auto;
+  }
+}
+@media (max-width: 360px) {
+  #modalTx .tx-modal-form .modal-body {
+    padding-inline: .65rem;
+  }
+  #modalTx .tx-modal-form .modal-body .row {
+    --bs-gutter-x: .5rem;
+  }
+  #modalTx .form-label {
+    font-size: .76rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
