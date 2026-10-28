@@ -116,6 +116,46 @@ function recurringId() {
   return 'REC-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 9).toUpperCase();
 }
 
+
+const GOAL_CATEGORIES = ['احتياطي الطوارئ', 'شراء ذهب', 'شراء عربية', 'استثمار', 'ادخار عام', 'سفر', 'تعليم', 'منزل', 'أخرى'];
+
+function financialGoalId() {
+  return 'GOAL-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 9).toUpperCase();
+}
+
+function goalProgress(goal) {
+  const target = Math.max(0, Number(goal && goal.target) || 0);
+  const current = Math.max(0, Number(goal && goal.current) || 0);
+  return target > 0 ? Math.max(0, Math.min(100, current / target * 100)) : 0;
+}
+
+function goalMonthsRemaining(deadline, todayDate = localISODate()) {
+  const due = normalizeGoogleDate(deadline);
+  const today = normalizeGoogleDate(todayDate);
+  if (!isValidISODate(due) || !isValidISODate(today) || due < today) return 0;
+  const dueY = Number(due.slice(0, 4));
+  const dueM = Number(due.slice(5, 7));
+  const todayY = Number(today.slice(0, 4));
+  const todayM = Number(today.slice(5, 7));
+  let months = (dueY - todayY) * 12 + dueM - todayM;
+  if (Number(due.slice(8, 10)) < Number(today.slice(8, 10))) months -= 1;
+  return Math.max(1, months);
+}
+
+function goalMonthlyRequired(goal, todayDate = localISODate()) {
+  const target = Math.max(0, Number(goal && goal.target) || 0);
+  const current = Math.max(0, Number(goal && goal.current) || 0);
+  const remaining = Math.max(0, target - current);
+  if (remaining <= 0) return 0;
+  const months = goalMonthsRemaining(goal && goal.deadline, todayDate);
+  if (months <= 0) return Math.round(remaining * 100) / 100;
+  return Math.ceil((remaining / months) * 100) / 100;
+}
+
+function goalCurrencyLabel(cur) {
+  return ({ EGP: 'ج.م.', SAR: 'ر.س.', USD: '$' })[cur] || String(cur || 'ج.م.');
+}
+
 function monthDueDate(year, monthIndex, dueDay) {
   const lastDay = new Date(year, monthIndex + 1, 0).getDate();
   const day = Math.max(1, Math.min(31, Number(dueDay) || 1));
@@ -228,6 +268,7 @@ function sharedSettingsPayload() {
     rateHistory: S.rateHistory,
     recurringSchedules: S.recurringSchedules,
     generatedOccurrences: S.generatedOccurrences,
+    financialGoals: S.financialGoals,
     budget: S.budget,
     warn: S.warn,
     accounts: S.accounts,
@@ -562,6 +603,9 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
     const localPendingScheduleIds = Array.isArray(S.pendingRecurringScheduleIds) ? S.pendingRecurringScheduleIds.map(String) : [];
     const localPendingScheduleIdSet = new Set(localPendingScheduleIds);
     const localPendingSchedules = (S.recurringSchedules || []).filter(item => localPendingScheduleIdSet.has(String(item.id)));
+    const localPendingGoalIds = Array.isArray(S.pendingFinancialGoalIds) ? S.pendingFinancialGoalIds.map(String) : [];
+    const localPendingGoalIdSet = new Set(localPendingGoalIds);
+    const localPendingGoals = (S.financialGoals || []).filter(item => localPendingGoalIdSet.has(String(item.id)));
     const mergedSharedState = { ...S, ...remote, ui: S.ui, tx: S.tx };
     if (Array.isArray(remote.recurringSchedules) && localPendingScheduleIds.length) {
       mergedSharedState.recurringSchedules = [
@@ -569,6 +613,13 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
         ...localPendingSchedules
       ];
       mergedSharedState.pendingRecurringScheduleIds = localPendingScheduleIds;
+    }
+    if (Array.isArray(remote.financialGoals) && localPendingGoalIds.length) {
+      mergedSharedState.financialGoals = [
+        ...remote.financialGoals.filter(item => !localPendingGoalIdSet.has(String(item.id))),
+        ...localPendingGoals
+      ];
+      mergedSharedState.pendingFinancialGoalIds = localPendingGoalIds;
     }
     if (!Object.prototype.hasOwnProperty.call(remote, 'baseRates')) {
       mergedSharedState.baseRates = localRateHistory.length ? (S.baseRates || S.rates) : (remote.rates || S.rates);
@@ -606,6 +657,7 @@ async function saveSharedSettingsToGoogle({ manual = false } = {}) {
     }
     cloudSettingsInitialized = true;
     S.pendingRecurringScheduleIds = [];
+    S.pendingFinancialGoalIds = [];
     cloudSettingsLastUpdated = result.updatedAt || new Date().toISOString();
     cloudSettingsStatus = 'تمت مزامنة الإعدادات مع Google Sheets';
     save();
@@ -759,6 +811,8 @@ function seed() {
     recurringSchedules: [],
     generatedOccurrences: [],
     pendingRecurringScheduleIds: [],
+    financialGoals: [],
+    pendingFinancialGoalIds: [],
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
     warn: 0.9,
     accounts: [
@@ -778,7 +832,7 @@ function normalizeState(input) {
   const obj = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const out = { ...base, ...input };
   out.ui = { ...base.ui, ...obj(input.ui) };
-  if (!['dash', 'tx', 'acc', 'ast', 'set', 'aud', 'rec'].includes(out.ui.tab)) out.ui.tab = 'dash';
+  if (!['dash', 'tx', 'acc', 'ast', 'set', 'aud', 'rec', 'goal'].includes(out.ui.tab)) out.ui.tab = 'dash';
   out.ui.y = Number.isInteger(Number(out.ui.y)) && Number(out.ui.y) >= 1900 && Number(out.ui.y) <= 2200 ? Number(out.ui.y) : base.ui.y;
   out.ui.m = out.ui.m === 'all' || /^(0[1-9]|1[0-2])$/.test(String(out.ui.m)) ? String(out.ui.m) : 'all';
   out.ui.q = String(out.ui.q || '');
@@ -860,6 +914,46 @@ function normalizeState(input) {
   out.generatedOccurrences = [...generatedByKey.values()];
   out.pendingRecurringScheduleIds = Array.isArray(input.pendingRecurringScheduleIds)
     ? [...new Set(input.pendingRecurringScheduleIds.map(String))]
+    : [];
+
+  const financialGoalIds = new Set();
+  out.financialGoals = (Array.isArray(input.financialGoals) ? input.financialGoals : [])
+    .filter(item => {
+      if (!item || typeof item !== 'object' || !String(item.id || '').trim() || financialGoalIds.has(String(item.id))) return false;
+      financialGoalIds.add(String(item.id));
+      return true;
+    })
+    .map(item => {
+      const target = Number(item.target);
+      const current = Number(item.current || 0);
+      const deadline = normalizeGoogleDate(item.deadline);
+      const history = (Array.isArray(item.history) ? item.history : []).filter(entry =>
+        entry && typeof entry === 'object' && isValidISODate(normalizeGoogleDate(entry.date)) &&
+        Number.isFinite(Number(entry.amount)) && Number(entry.amount) > 0
+      ).slice(0, 200).map(entry => ({
+        id: String(entry.id || financialGoalId()),
+        date: normalizeGoogleDate(entry.date),
+        amount: Number(entry.amount),
+        direction: entry.direction === 'withdraw' ? 'withdraw' : 'add',
+        note: String(entry.note || '').slice(0, 200)
+      }));
+      return {
+        id: String(item.id),
+        name: String(item.name || '').trim().slice(0, 100),
+        category: GOAL_CATEGORIES.includes(item.category) ? item.category : 'أخرى',
+        target: Number.isFinite(target) && target > 0 ? target : 0,
+        current: Number.isFinite(current) && current >= 0 ? current : 0,
+        cur: ['EGP', 'SAR', 'USD'].includes(item.cur) ? item.cur : 'EGP',
+        deadline: isValidISODate(deadline) ? deadline : '',
+        note: String(item.note || '').slice(0, 300),
+        active: item.active !== false,
+        createdAt: String(item.createdAt || ''),
+        history
+      };
+    })
+    .filter(item => item.name && item.target > 0 && isValidISODate(item.deadline));
+  out.pendingFinancialGoalIds = Array.isArray(input.pendingFinancialGoalIds)
+    ? [...new Set(input.pendingFinancialGoalIds.map(String))]
     : [];
 
   out.budget = { ...base.budget, ...obj(input.budget) };
