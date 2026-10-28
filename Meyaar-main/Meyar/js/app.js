@@ -1179,6 +1179,7 @@ function render() {
   if (icon) icon.className = document.documentElement.getAttribute('data-theme') === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
 }
 let editingTx = null;
+let txSaveInFlight = false;
 
 let editingTransfer = null;
 let transferInFlight = false;
@@ -1256,6 +1257,10 @@ function updateTransferPreview() {
 }
 
 function openTransfer(tx = null) {
+  if (txSaveInFlight || transferInFlight) {
+    showAppToast('هناك عملية حفظ قيد التنفيذ. انتظر تأكيدها قبل بدء عملية أخرى.', 4000);
+    return;
+  }
   if (S.accounts.length < 2) { alert('أضف حسابًا ثانيًا أولًا حتى تتمكن من التحويل بين الحسابات.'); return; }
   editingTransfer = null;
   if (tx) {
@@ -1406,6 +1411,10 @@ $('#formTransfer').addEventListener('submit', async e => {
 });
 
 function openTx(t) {
+  if (txSaveInFlight || transferInFlight) {
+    showAppToast('هناك عملية حفظ قيد التنفيذ. انتظر تأكيدها قبل بدء عملية أخرى.', 4000);
+    return;
+  }
   editingTx = t || null;
   const isNew = !t;
   t = t || { id: Math.max(0, ...S.tx.map(x => +x.id)) + 1, date: localISODate(), name: '', cat: 'الأساسيات', type: 'مصروف', amt: '', fee: 0, pay: 'نقدي', acc: S.accounts[0]?.code || '', code: '', qty: '', price: '', note: '', cur: 'EGP' };
@@ -1425,6 +1434,7 @@ function openTx(t) {
 
 $('#formTx').addEventListener('submit', async e => {
   e.preventDefault();
+  if (txSaveInFlight) return;
   const d = Object.fromEntries(new FormData(e.target));
   const wasEditing = Boolean(editingTx);
   const oldTx = wasEditing ? { ...editingTx } : null;
@@ -1441,6 +1451,21 @@ $('#formTx').addEventListener('submit', async e => {
   S.tx.filter(x => !wasEditing || x.id !== oldTx.id).forEach(x => ids[x.id] = (ids[x.id] || 0) + 1);
   const validation = status(t, ids);
   if (validation !== 'سليم') { alert('لا يمكن حفظ المعاملة: ' + validation); return; }
+  if (!googleTransactionsLoaded) {
+    alert('لم تكتمل قراءة بيانات Google Sheets؛ لم أحفظ المعاملة حتى لا تختلف البيانات بين الأجهزة. أعد تحميل الصفحة وانتظر اكتمال المزامنة.');
+    return;
+  }
+
+  txSaveInFlight = true;
+  const submitButton = e.target.querySelector('button[type="submit"]');
+  const previousSubmitHtml = submitButton ? submitButton.innerHTML : '';
+  const dismissButtons = Array.from($('#modalTx').querySelectorAll('[data-bs-dismiss="modal"]'));
+  const dismissStates = dismissButtons.map(button => ({ button, disabled: button.disabled }));
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> جارٍ حفظ المعاملة…';
+  }
+  dismissButtons.forEach(button => { button.disabled = true; });
 
   let oldGoogleRowDeleted = false;
   try {
@@ -1471,6 +1496,13 @@ $('#formTx').addEventListener('submit', async e => {
     }
     console.error('فشل حفظ المعاملة في Google Sheets:', error);
     alert('لم يتم تأكيد العملية في Google Sheets. لم أغيّر النسخة المحلية. ' + (error && error.message ? error.message : 'إذا كنت تعدّل معاملة، راجع ورقة Google Sheets للتأكد من بقاء الصف السابق.'));
+  } finally {
+    txSaveInFlight = false;
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.innerHTML = previousSubmitHtml;
+    }
+    dismissStates.forEach(({ button, disabled }) => { button.disabled = disabled; });
   }
 });
 
