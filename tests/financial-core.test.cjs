@@ -21,6 +21,13 @@ globalThis.__financeTest = {
   parseTransferCloudNote,
   transferMetadata,
   transferPairIssues,
+  monthDueDate,
+  recurringOccurrenceKey,
+  makeRecurringCloudNote,
+  parseRecurringCloudNote,
+  recurringOccurrences,
+  markOccurrenceGenerated,
+  occurrenceAlreadyGenerated,
   calc,
   P,
   Q
@@ -117,4 +124,48 @@ assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are
 assert.match(html, /style\.css\?v=20261028-finance1/, 'Updated CSS cache version is active');
 assert.match(html, /app\.js\?v=20261028-finance1/, 'Updated JS cache version is active');
 
-console.log('Meyaar financial-core tests passed: dated FX, baseline migration, transfer accounting, and incomplete-pair audit.');
+
+
+// Recurring obligations: month-end clamping, marker round-trip, and idempotent occurrence detection.
+assert.equal(api.monthDueDate(2026, 1, 31), '2026-02-28', 'February due dates clamp to its last day');
+assert.equal(api.monthDueDate(2026, 3, 31), '2026-04-30', 'April due dates clamp to its last day');
+assert.equal(api.monthDueDate(2028, 1, 31), '2028-02-29', 'Leap-year February supports day 29');
+
+const recurringId = 'REC-2026-RENT';
+const recurringSchedule = {
+  id: recurringId, name: 'إيجار الشقة', type: 'مصروف', cat: 'الأساسيات',
+  amount: 5000, fee: 0, cur: 'EGP', acc: 'CASH', pay: 'تحويل بنكي',
+  startDate: '2026-01-01', dueDay: 31, reminderDays: 3, note: 'إيجار',
+  active: true, createdAt: '2026-01-01T00:00:00.000Z'
+};
+api.setState(makeState({ recurringSchedules: [recurringSchedule] }));
+let recurringDates = api.recurringOccurrences({
+  fromDate: '2026-02-27', daysAhead: 4, todayDate: '2026-02-27'
+});
+assert.ok(recurringDates.some(item => item.dueDate === '2026-02-28'),
+  'A due date at month end is shown in the agenda');
+assert.ok(recurringDates.some(item => item.dueDate === '2026-01-31' && item.daysUntil < 0),
+  'An ungenerated due date is identified as overdue');
+
+api.markOccurrenceGenerated(recurringId, '2026-01-31', 'transaction-12');
+recurringDates = api.recurringOccurrences({
+  fromDate: '2026-02-27', daysAhead: 4, todayDate: '2026-02-27'
+});
+assert.ok(!recurringDates.some(item => item.dueDate === '2026-01-31'),
+  'A generated occurrence is removed from the unrecorded agenda');
+
+const recurringNote = api.makeRecurringCloudNote(recurringId, '2026-02-28', 'إيجار الشقة', 'إيجار فبراير');
+assert.deepEqual(
+  JSON.parse(JSON.stringify(api.parseRecurringCloudNote(recurringNote))),
+  { id: recurringId, date: '2026-02-28', name: 'إيجار الشقة', note: 'إيجار فبراير' },
+  'Recurring occurrence marker round-trips through the existing Notes column'
+);
+api.setState(makeState({ recurringSchedules: [recurringSchedule], tx: [{
+  id: 13, date: '2026-02-28', type: 'مصروف', cat: 'الأساسيات', amt: 5000,
+  acc: 'CASH', cur: 'EGP', note: 'إيجار فبراير', googleNotes: recurringNote
+}] }));
+assert.equal(api.occurrenceAlreadyGenerated(recurringId, '2026-02-28'), true,
+  'A sheet transaction marker prevents a second generation of the same occurrence');
+
+
+console.log('Meyaar financial-core tests passed: dated FX, transfers, recurring dates, occurrence idempotency, and UI wiring.');
