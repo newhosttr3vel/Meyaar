@@ -116,6 +116,46 @@ function recurringId() {
   return 'REC-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 9).toUpperCase();
 }
 
+
+const GOAL_CATEGORIES = ['احتياطي الطوارئ', 'شراء ذهب', 'شراء عربية', 'استثمار', 'ادخار عام', 'سفر', 'تعليم', 'منزل', 'أخرى'];
+
+function financialGoalId() {
+  return 'GOAL-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 9).toUpperCase();
+}
+
+function goalProgress(goal) {
+  const target = Math.max(0, Number(goal && goal.target) || 0);
+  const current = Math.max(0, Number(goal && goal.current) || 0);
+  return target > 0 ? Math.max(0, Math.min(100, current / target * 100)) : 0;
+}
+
+function goalMonthsRemaining(deadline, todayDate = localISODate()) {
+  const due = normalizeGoogleDate(deadline);
+  const today = normalizeGoogleDate(todayDate);
+  if (!isValidISODate(due) || !isValidISODate(today) || due < today) return 0;
+  const dueY = Number(due.slice(0, 4));
+  const dueM = Number(due.slice(5, 7));
+  const todayY = Number(today.slice(0, 4));
+  const todayM = Number(today.slice(5, 7));
+  let months = (dueY - todayY) * 12 + dueM - todayM;
+  if (Number(due.slice(8, 10)) < Number(today.slice(8, 10))) months -= 1;
+  return Math.max(1, months);
+}
+
+function goalMonthlyRequired(goal, todayDate = localISODate()) {
+  const target = Math.max(0, Number(goal && goal.target) || 0);
+  const current = Math.max(0, Number(goal && goal.current) || 0);
+  const remaining = Math.max(0, target - current);
+  if (remaining <= 0) return 0;
+  const months = goalMonthsRemaining(goal && goal.deadline, todayDate);
+  if (months <= 0) return Math.round(remaining * 100) / 100;
+  return Math.ceil((remaining / months) * 100) / 100;
+}
+
+function goalCurrencyLabel(cur) {
+  return ({ EGP: 'ج.م.', SAR: 'ر.س.', USD: '$' })[cur] || String(cur || 'ج.م.');
+}
+
 function monthDueDate(year, monthIndex, dueDay) {
   const lastDay = new Date(year, monthIndex + 1, 0).getDate();
   const day = Math.max(1, Math.min(31, Number(dueDay) || 1));
@@ -228,6 +268,7 @@ function sharedSettingsPayload() {
     rateHistory: S.rateHistory,
     recurringSchedules: S.recurringSchedules,
     generatedOccurrences: S.generatedOccurrences,
+    financialGoals: S.financialGoals,
     budget: S.budget,
     warn: S.warn,
     accounts: S.accounts,
@@ -562,6 +603,9 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
     const localPendingScheduleIds = Array.isArray(S.pendingRecurringScheduleIds) ? S.pendingRecurringScheduleIds.map(String) : [];
     const localPendingScheduleIdSet = new Set(localPendingScheduleIds);
     const localPendingSchedules = (S.recurringSchedules || []).filter(item => localPendingScheduleIdSet.has(String(item.id)));
+    const localPendingGoalIds = Array.isArray(S.pendingFinancialGoalIds) ? S.pendingFinancialGoalIds.map(String) : [];
+    const localPendingGoalIdSet = new Set(localPendingGoalIds);
+    const localPendingGoals = (S.financialGoals || []).filter(item => localPendingGoalIdSet.has(String(item.id)));
     const mergedSharedState = { ...S, ...remote, ui: S.ui, tx: S.tx };
     if (Array.isArray(remote.recurringSchedules) && localPendingScheduleIds.length) {
       mergedSharedState.recurringSchedules = [
@@ -569,6 +613,13 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
         ...localPendingSchedules
       ];
       mergedSharedState.pendingRecurringScheduleIds = localPendingScheduleIds;
+    }
+    if (Array.isArray(remote.financialGoals) && localPendingGoalIds.length) {
+      mergedSharedState.financialGoals = [
+        ...remote.financialGoals.filter(item => !localPendingGoalIdSet.has(String(item.id))),
+        ...localPendingGoals
+      ];
+      mergedSharedState.pendingFinancialGoalIds = localPendingGoalIds;
     }
     if (!Object.prototype.hasOwnProperty.call(remote, 'baseRates')) {
       mergedSharedState.baseRates = localRateHistory.length ? (S.baseRates || S.rates) : (remote.rates || S.rates);
@@ -606,6 +657,7 @@ async function saveSharedSettingsToGoogle({ manual = false } = {}) {
     }
     cloudSettingsInitialized = true;
     S.pendingRecurringScheduleIds = [];
+    S.pendingFinancialGoalIds = [];
     cloudSettingsLastUpdated = result.updatedAt || new Date().toISOString();
     cloudSettingsStatus = 'تمت مزامنة الإعدادات مع Google Sheets';
     save();
@@ -759,6 +811,8 @@ function seed() {
     recurringSchedules: [],
     generatedOccurrences: [],
     pendingRecurringScheduleIds: [],
+    financialGoals: [],
+    pendingFinancialGoalIds: [],
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
     warn: 0.9,
     accounts: [
@@ -778,7 +832,7 @@ function normalizeState(input) {
   const obj = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const out = { ...base, ...input };
   out.ui = { ...base.ui, ...obj(input.ui) };
-  if (!['dash', 'tx', 'acc', 'ast', 'set', 'aud', 'rec'].includes(out.ui.tab)) out.ui.tab = 'dash';
+  if (!['dash', 'tx', 'acc', 'ast', 'set', 'aud', 'rec', 'goal'].includes(out.ui.tab)) out.ui.tab = 'dash';
   out.ui.y = Number.isInteger(Number(out.ui.y)) && Number(out.ui.y) >= 1900 && Number(out.ui.y) <= 2200 ? Number(out.ui.y) : base.ui.y;
   out.ui.m = out.ui.m === 'all' || /^(0[1-9]|1[0-2])$/.test(String(out.ui.m)) ? String(out.ui.m) : 'all';
   out.ui.q = String(out.ui.q || '');
@@ -860,6 +914,46 @@ function normalizeState(input) {
   out.generatedOccurrences = [...generatedByKey.values()];
   out.pendingRecurringScheduleIds = Array.isArray(input.pendingRecurringScheduleIds)
     ? [...new Set(input.pendingRecurringScheduleIds.map(String))]
+    : [];
+
+  const financialGoalIds = new Set();
+  out.financialGoals = (Array.isArray(input.financialGoals) ? input.financialGoals : [])
+    .filter(item => {
+      if (!item || typeof item !== 'object' || !String(item.id || '').trim() || financialGoalIds.has(String(item.id))) return false;
+      financialGoalIds.add(String(item.id));
+      return true;
+    })
+    .map(item => {
+      const target = Number(item.target);
+      const current = Number(item.current || 0);
+      const deadline = normalizeGoogleDate(item.deadline);
+      const history = (Array.isArray(item.history) ? item.history : []).filter(entry =>
+        entry && typeof entry === 'object' && isValidISODate(normalizeGoogleDate(entry.date)) &&
+        Number.isFinite(Number(entry.amount)) && Number(entry.amount) > 0
+      ).slice(0, 200).map(entry => ({
+        id: String(entry.id || financialGoalId()),
+        date: normalizeGoogleDate(entry.date),
+        amount: Number(entry.amount),
+        direction: entry.direction === 'withdraw' ? 'withdraw' : 'add',
+        note: String(entry.note || '').slice(0, 200)
+      }));
+      return {
+        id: String(item.id),
+        name: String(item.name || '').trim().slice(0, 100),
+        category: GOAL_CATEGORIES.includes(item.category) ? item.category : 'أخرى',
+        target: Number.isFinite(target) && target > 0 ? target : 0,
+        current: Number.isFinite(current) && current >= 0 ? current : 0,
+        cur: ['EGP', 'SAR', 'USD'].includes(item.cur) ? item.cur : 'EGP',
+        deadline: isValidISODate(deadline) ? deadline : '',
+        note: String(item.note || '').slice(0, 300),
+        active: item.active !== false,
+        createdAt: String(item.createdAt || ''),
+        history
+      };
+    })
+    .filter(item => item.name && item.target > 0 && isValidISODate(item.deadline));
+  out.pendingFinancialGoalIds = Array.isArray(input.pendingFinancialGoalIds)
+    ? [...new Set(input.pendingFinancialGoalIds.map(String))]
     : [];
 
   out.budget = { ...base.budget, ...obj(input.budget) };
@@ -1392,6 +1486,141 @@ function vRecurring() {
   '</section>';
 }
 
+
+function financialGoalFor(id) {
+  return (S.financialGoals || []).find(goal => String(goal.id) === String(id)) || null;
+}
+
+function goalDisplayAmount(amount, cur) {
+  return f(amount) + ' ' + goalCurrencyLabel(cur);
+}
+
+function updateGoalPlanPreview() {
+  const box = $('#goalPlanPreview');
+  const form = $('#formGoal');
+  if (!box || !form) return;
+  const target = Number(form.elements.namedItem('target').value);
+  const current = Number(form.elements.namedItem('current').value || 0);
+  const deadline = form.elements.namedItem('deadline').value;
+  const cur = form.elements.namedItem('cur').value || 'EGP';
+  if (!Number.isFinite(target) || target <= 0 || !Number.isFinite(current) || current < 0 || !isValidISODate(deadline)) {
+    box.innerHTML = '<strong><i class="bi bi-calculator"></i> خطة الوصول للهدف</strong><p class="note mb-0 mt-1">اكتب المبلغ المستهدف والرصيد الحالي والموعد لعرض خطة ادخار تقريبية.</p>';
+    return;
+  }
+  const goal = { target, current, deadline };
+  const remaining = Math.max(0, target - current);
+  const months = goalMonthsRemaining(deadline);
+  const monthly = goalMonthlyRequired(goal);
+  const status = current >= target ? 'وصلت للهدف بالفعل — أحسنت!' :
+    deadline < localISODate() ? 'الموعد المحدد فات؛ المبلغ المتبقي مطلوب لتدارك الخطة.' :
+    'الخطة لا تحتسب أي عائد استثماري أو أرباح مستقبلية.';
+  box.innerHTML = '<strong><i class="bi bi-calculator"></i> خطة الوصول للهدف</strong>' +
+    '<div class="goal-preview-metrics"><span>المتبقي <b>' + esc(goalDisplayAmount(remaining, cur)) + '</b></span><span>التوفير المطلوب <b>' + esc(goalDisplayAmount(monthly, cur)) + (deadline < localISODate() && remaining > 0 ? ' فورًا' : ' شهريًا') + '</b></span><span>المدة <b>' + (current >= target ? 'مكتمل' : deadline < localISODate() ? 'موعد متأخر' : months + ' شهر تقريبًا') + '</b></span></div>' +
+    '<p class="note mb-0 mt-2">' + esc(status) + '</p>';
+}
+
+function openFinancialGoalModal(id = '') {
+  if (goalSaveInFlight || goalContributionInFlight) {
+    showAppToast('هناك عملية حفظ قيد التنفيذ. انتظر تأكيدها قبل بدء عملية أخرى.', 4000);
+    return;
+  }
+  const goal = id ? financialGoalFor(id) : null;
+  if (id && !goal) {
+    showAppToast('لم أجد الهدف المطلوب. حدّث الصفحة وحاول مرة أخرى.', 4000);
+    return;
+  }
+  const form = $('#formGoal');
+  form.reset();
+  form.elements.namedItem('id').value = goal ? goal.id : '';
+  form.elements.namedItem('name').value = goal ? goal.name : '';
+  form.elements.namedItem('category').value = goal ? goal.category : 'احتياطي الطوارئ';
+  form.elements.namedItem('target').value = goal ? goal.target : '';
+  form.elements.namedItem('current').value = goal ? goal.current : 0;
+  form.elements.namedItem('cur').value = goal ? goal.cur : 'EGP';
+  form.elements.namedItem('deadline').value = goal ? goal.deadline : addCalendarDays(localISODate(), 365);
+  form.elements.namedItem('note').value = goal ? goal.note : '';
+  $('#goalModalTitle').textContent = goal ? 'تعديل الهدف المالي' : 'هدف مالي جديد';
+  $('#btnSaveGoal').innerHTML = '<i class="bi bi-check-lg"></i> ' + (goal ? 'حفظ التعديلات' : 'حفظ الهدف');
+  updateGoalPlanPreview();
+  new bootstrap.Modal($('#modalGoal')).show();
+}
+
+function openGoalContributionModal(id) {
+  if (goalSaveInFlight || goalContributionInFlight) {
+    showAppToast('هناك عملية حفظ قيد التنفيذ. انتظر تأكيدها قبل بدء عملية أخرى.', 4000);
+    return;
+  }
+  const goal = financialGoalFor(id);
+  if (!goal) {
+    showAppToast('الهدف غير موجود. حدّث الصفحة وحاول مرة أخرى.', 4000);
+    return;
+  }
+  const form = $('#formGoalContribution');
+  form.reset();
+  form.elements.namedItem('goalId').value = goal.id;
+  form.elements.namedItem('date').value = localISODate();
+  form.elements.namedItem('amount').value = '';
+  $('#goalContributionTitle').textContent = 'تحديث رصيد: ' + goal.name;
+  $('#goalContributionBalance').textContent = 'الرصيد الحالي: ' + goalDisplayAmount(goal.current, goal.cur) + ' — المستهدف: ' + goalDisplayAmount(goal.target, goal.cur);
+  $('#goalContributionCurrency').textContent = 'جميع مبالغ هذه الحركة بعملة الهدف (' + goal.cur + ').';
+  new bootstrap.Modal($('#modalGoalContribution')).show();
+}
+
+let goalSaveInFlight = false;
+let goalContributionInFlight = false;
+
+function vFinancialGoals() {
+  const goals = [...(S.financialGoals || [])].filter(goal => goal.active !== false)
+    .sort((a, b) => a.deadline.localeCompare(b.deadline) || a.name.localeCompare(b.name));
+  const today = localISODate();
+  const complete = goals.filter(goal => goal.current >= goal.target);
+  const remainingEGP = goals.reduce((sum, goal) =>
+    sum + toEGP(Math.max(0, goal.target - goal.current), goal.cur, today), 0);
+  const monthlyEGP = goals.reduce((sum, goal) =>
+    sum + toEGP(goalMonthlyRequired(goal, today), goal.cur, today), 0);
+  const syncInfo = cloudSettingsInitialized
+    ? '<span class="goal-sync-pill"><i class="bi bi-cloud-check"></i> الأهداف مشتركة بين أجهزتك</span>'
+    : '<span class="goal-sync-pill is-warning"><i class="bi bi-cloud-exclamation"></i> يلزم تأكيد مزامنة الإعدادات</span>';
+
+  const cards = goals.length ? goals.map(goal => {
+    const progress = goalProgress(goal);
+    const remaining = Math.max(0, goal.target - goal.current);
+    const months = goalMonthsRemaining(goal.deadline, today);
+    const done = remaining <= 0;
+    const late = !done && goal.deadline < today;
+    const deadlineLabel = done ? 'تم تحقيق الهدف' : late ? 'تجاوز الموعد المستهدف' : 'الموعد: ' + goal.deadline;
+    const statusClass = done ? 'is-complete' : late ? 'is-late' : 'is-active';
+    const monthly = goalMonthlyRequired(goal, today);
+    const history = (goal.history || []).slice(0, 2);
+    const historyHtml = history.length
+      ? '<div class="goal-history">' + history.map(entry =>
+          '<div><span>' + (entry.direction === 'withdraw' ? 'سحب من المخصص' : 'مساهمة') + ' · ' + esc(entry.date) + '</span><strong>' +
+          (entry.direction === 'withdraw' ? '−' : '+') + esc(goalDisplayAmount(entry.amount, goal.cur)) +
+          (entry.note ? '<small>' + esc(entry.note) + '</small>' : '') + '</strong></div>'
+        ).join('') + '</div>'
+      : '<p class="goal-no-history">لسه مفيش مساهمات مسجلة. تقدر تحدّث الرصيد كل ما تخصص مبلغًا للهدف.</p>';
+    const icon = ({ 'احتياطي الطوارئ': 'bi-shield-check', 'شراء ذهب': 'bi-gem', 'شراء عربية': 'bi-car-front', 'استثمار': 'bi-graph-up-arrow', 'ادخار عام': 'bi-piggy-bank', 'سفر': 'bi-airplane', 'تعليم': 'bi-mortarboard', 'منزل': 'bi-house' })[goal.category] || 'bi-bullseye';
+    return '<article class="goal-card ' + statusClass + '">' +
+      '<div class="goal-card-header"><div class="goal-icon"><i class="bi ' + icon + '"></i></div><div class="goal-title"><strong>' + esc(goal.name) + '</strong><span>' + esc(goal.category) + ' · ' + esc(goal.cur) + '</span></div><span class="goal-deadline ' + (done ? 'is-complete' : late ? 'is-late' : '') + '">' + esc(deadlineLabel) + '</span></div>' +
+      '<div class="goal-progress-top"><span>نسبة الإنجاز</span><strong>' + progress.toFixed(1) + '%</strong></div>' +
+      '<div class="progress goal-progress" role="progressbar" aria-label="نسبة إنجاز ' + esc(goal.name) + '" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + progress.toFixed(1) + '"><div class="progress-bar" style="width:' + progress.toFixed(2) + '%"></div></div>' +
+      '<div class="goal-amount-grid"><div><span>الرصيد الحالي</span><strong>' + esc(goalDisplayAmount(goal.current, goal.cur)) + '</strong></div><div><span>المبلغ المستهدف</span><strong>' + esc(goalDisplayAmount(goal.target, goal.cur)) + '</strong></div><div><span>المتبقي</span><strong>' + esc(goalDisplayAmount(remaining, goal.cur)) + '</strong></div></div>' +
+      '<div class="goal-monthly-box"><div><span>' + (done ? 'حالة الخطة' : late ? 'لتدارك الموعد' : 'التوفير المطلوب شهريًا') + '</span><strong>' + (done ? 'اكتمل الهدف 🎉' : esc(goalDisplayAmount(monthly, goal.cur)) + (late ? ' فورًا' : ' شهريًا')) + '</strong></div><small>' + (done ? 'تقدر تحتفظ بالهدف كسجل للإنجاز.' : late ? 'الموعد المحدد فات؛ راجع التاريخ المستهدف أو حدّث خطتك.' : months + ' شهرًا تقريبًا متبقية · بدون احتساب عائد أو أرباح.') + '</small></div>' +
+      (goal.note ? '<p class="goal-note">' + esc(goal.note) + '</p>' : '') +
+      historyHtml +
+      '<div class="goal-card-actions"><button type="button" class="btn btn-primary btn-sm" data-goal-contribute="' + esc(goal.id) + '"><i class="bi bi-plus-circle"></i> تسجيل مساهمة</button><button type="button" class="btn btn-outline-secondary btn-sm" data-edit-goal="' + esc(goal.id) + '"><i class="bi bi-pencil"></i> تعديل الهدف</button></div>' +
+      '</article>';
+  }).join('') : '<div class="goal-empty"><span><i class="bi bi-bullseye"></i></span><strong>لسه مفيش أهداف مالية</strong><p>ابدأ بهدف واضح زي صندوق الطوارئ أو شراء ذهب أو عربية أو الوصول لمبلغ استثماري محدد.</p><button class="btn btn-primary" id="btnAddGoalEmpty"><i class="bi bi-plus-lg"></i> إنشاء أول هدف</button></div>';
+
+  return '<section class="goal-page">' +
+    '<div class="goal-hero mb-3"><div class="goal-hero-copy"><span class="goal-eyebrow"><i class="bi bi-bullseye"></i> من النية إلى خطة قابلة للقياس</span><h2>أهدافك المالية</h2><p>حدد أنت عايز توصل لإيه، ومِعيار يحسب لك المتبقي والتوفير الشهري المطلوب حسب الموعد والرصيد الحالي.</p><div class="mt-2">' + syncInfo + '</div></div><button class="btn btn-light goal-primary-action" id="btnAddGoal"><i class="bi bi-plus-lg"></i> هدف جديد</button></div>' +
+    '<div class="row g-3 mb-3"><div class="col-6 col-lg-3"><div class="goal-kpi"><span>أهداف نشطة</span><strong>' + goals.length + '</strong><small>لها مبلغ وموعد محددان</small></div></div><div class="col-6 col-lg-3"><div class="goal-kpi"><span>أهداف مكتملة</span><strong>' + complete.length + '</strong><small>وصلت إلى المبلغ المستهدف</small></div></div><div class="col-6 col-lg-3"><div class="goal-kpi"><span>إجمالي المبالغ المتبقية</span><strong>' + f(remainingEGP) + ' ج.م.</strong><small>تقدير بالجنيه بأسعار مِعيار الحالية</small></div></div><div class="col-6 col-lg-3"><div class="goal-kpi"><span>خطة التوفير الشهرية</span><strong>' + f(monthlyEGP) + ' ج.م.</strong><small>تقدير بالجنيه ومن غير عوائد</small></div></div></div>' +
+    '<div class="goal-section-heading"><div><h3><i class="bi bi-flag"></i> خططك الحالية</h3><p>تحديث الرصيد هنا للمتابعة فقط؛ لا ينشئ معاملة أو يغيّر أرصدة الحسابات تلقائيًا.</p></div><span class="goal-count">' + goals.length + ' هدف</span></div>' +
+    '<div class="goal-grid">' + cards + '</div>' +
+    '<div class="alert alert-info small mt-3 mb-0"><i class="bi bi-info-circle"></i> المساهمة أو السحب يحدّث رصيد الهدف فقط ولا ينشئ قيدًا ماليًا، حتى لا يتكرر احتساب المبلغ. سجّل المعاملة الفعلية في «المعاملات» بشكل منفصل لو كنت محتاجها تظهر في رصيد الحساب والتقارير.</div>' +
+    '</section>';
+}
+
 function vSet() {
   const t = CATS.reduce((s, c) => s + (+S.budget[c] || 0), 0);
   const rateHistory = [...(S.rateHistory || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
@@ -1438,7 +1667,7 @@ function render() {
   destroyCharts();
   $$('#navTabs .nav-link').forEach(b => b.classList.toggle('active', b.dataset.tab === S.ui.tab));
   const c = calc();
-  const views = { dash: vDash, tx: vTx, acc: vAcc, ast: vAst, set: vSet, aud: vAud, rec: vRecurring };
+  const views = { dash: vDash, tx: vTx, acc: vAcc, ast: vAst, set: vSet, aud: vAud, rec: vRecurring, goal: vFinancialGoals };
   $('#app').innerHTML = views[S.ui.tab](c);
   if (S.ui.tab === 'dash') { requestAnimationFrame(() => { renderBudgetBars(c); renderExpenseDonut(c); renderAssetDonut(c); renderIncExp(c); renderBalanceLine(c); }); }
   const icon = $('#btnTheme i');
@@ -1502,6 +1731,95 @@ function sameRecurringDefinition(a, b) {
     Math.abs(Number(a.fee || 0) - Number(b.fee || 0)) < 0.005 &&
     Number(a.dueDay) === Number(b.dueDay);
 }
+
+
+$('#formGoal').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (goalSaveInFlight || goalContributionInFlight) return;
+  if (!cloudSettingsInitialized) {
+    alert('لا يمكن تأكيد مزامنة الأهداف بين الأجهزة بعد. افتح الإعدادات على الجهاز الأساسي واضغط «مزامنة إعدادات هذا الجهاز» أولًا.');
+    return;
+  }
+  const d = Object.fromEntries(new FormData(e.target));
+  const id = String(d.id || '');
+  const name = String(d.name || '').trim();
+  const target = Number(d.target);
+  const current = Number(d.current || 0);
+  const deadline = String(d.deadline || '');
+  const cur = String(d.cur || 'EGP');
+  if (!name) { alert('اكتب اسمًا واضحًا للهدف.'); return; }
+  if (!Number.isFinite(target) || target <= 0) { alert('المبلغ المستهدف يجب أن يكون أكبر من صفر.'); return; }
+  if (!Number.isFinite(current) || current < 0) { alert('الرصيد الحالي يجب أن يكون صفرًا أو أكبر.'); return; }
+  if (!isValidISODate(deadline)) { alert('اختار موعدًا مستهدفًا صحيحًا.'); return; }
+  if (!['EGP', 'SAR', 'USD'].includes(cur)) { alert('العملة المحددة غير مدعومة.'); return; }
+  if (!GOAL_CATEGORIES.includes(d.category)) { alert('اختار تصنيفًا صحيحًا للهدف.'); return; }
+
+  const previous = id ? financialGoalFor(id) : null;
+  if (id && !previous) { alert('لم أجد الهدف المطلوب؛ حدّث الصفحة وحاول مرة أخرى.'); return; }
+  const goal = {
+    id: id || financialGoalId(), name: name.slice(0, 100), category: d.category,
+    target, current, cur, deadline, note: String(d.note || '').trim().slice(0, 300),
+    active: previous ? previous.active !== false : true,
+    createdAt: previous ? (previous.createdAt || new Date().toISOString()) : new Date().toISOString(),
+    history: previous ? (previous.history || []) : []
+  };
+  goalSaveInFlight = true;
+  try {
+    if (previous) S.financialGoals = S.financialGoals.map(item => item.id === previous.id ? goal : item);
+    else S.financialGoals = [...(S.financialGoals || []), goal];
+    S.pendingFinancialGoalIds = [...new Set([...(S.pendingFinancialGoalIds || []).map(String), goal.id])];
+    save();
+    bootstrap.Modal.getInstance($('#modalGoal')).hide();
+    render();
+    const synced = await saveSharedSettingsToGoogle();
+    showAppToast(synced
+      ? 'تم حفظ الهدف ومزامنته بين أجهزتك.'
+      : 'تم حفظ الهدف على هذا الجهاز مؤقتًا؛ راجع الإعدادات لمزامنته مع Google Sheets.', 5500);
+  } finally {
+    goalSaveInFlight = false;
+  }
+});
+
+$('#formGoalContribution').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (goalSaveInFlight || goalContributionInFlight) return;
+  if (!cloudSettingsInitialized) {
+    alert('لا يمكن تأكيد مزامنة الأهداف بين الأجهزة بعد. افتح الإعدادات على الجهاز الأساسي واضغط «مزامنة إعدادات هذا الجهاز» أولًا.');
+    return;
+  }
+  const d = Object.fromEntries(new FormData(e.target));
+  const goal = financialGoalFor(String(d.goalId || ''));
+  const amount = Number(d.amount);
+  const date = String(d.date || '');
+  const direction = d.direction === 'withdraw' ? 'withdraw' : 'add';
+  if (!goal) { alert('الهدف غير موجود. حدّث الصفحة وحاول مرة أخرى.'); return; }
+  if (!Number.isFinite(amount) || amount <= 0) { alert('المبلغ يجب أن يكون أكبر من صفر.'); return; }
+  if (!isValidISODate(date)) { alert('اختار تاريخًا صحيحًا للمساهمة.'); return; }
+  if (direction === 'withdraw' && amount > goal.current) { alert('المبلغ المسحوب أكبر من الرصيد الحالي المخصص لهذا الهدف.'); return; }
+  goalContributionInFlight = true;
+  try {
+    const delta = direction === 'withdraw' ? -amount : amount;
+    const updated = {
+      ...goal,
+      current: Math.max(0, Math.round((goal.current + delta) * 100) / 100),
+      history: [{
+        id: financialGoalId(), date, amount, direction,
+        note: String(d.note || '').trim().slice(0, 200)
+      }, ...(goal.history || [])].slice(0, 200)
+    };
+    S.financialGoals = S.financialGoals.map(item => item.id === goal.id ? updated : item);
+    S.pendingFinancialGoalIds = [...new Set([...(S.pendingFinancialGoalIds || []).map(String), goal.id])];
+    save();
+    bootstrap.Modal.getInstance($('#modalGoalContribution')).hide();
+    render();
+    const synced = await saveSharedSettingsToGoogle();
+    showAppToast(synced
+      ? (direction === 'withdraw' ? 'تم تحديث رصيد الهدف بعد السحب.' : 'تم تسجيل المساهمة وتحديث تقدم الهدف.') + ' تمت المزامنة.'
+      : 'تم تحديث الهدف محليًا؛ المزامنة مع Google Sheets لم تتأكد بعد.', 5500);
+  } finally {
+    goalContributionInFlight = false;
+  }
+});
 
 $('#formRecurring').addEventListener('submit', async e => {
   e.preventDefault();
@@ -2091,6 +2409,11 @@ document.addEventListener('click', e => {
   if (tab) { S.ui.tab = tab.dataset.tab; save(); render(); return; }
   if (e.target.closest('#btnAddTx')) { openTx(); return; }
   if (e.target.closest('#btnAddTransfer')) { openTransfer(); return; }
+  if (e.target.closest('#btnAddGoal') || e.target.closest('#btnAddGoalEmpty')) { openFinancialGoalModal(); return; }
+  const editGoalBtn = e.target.closest('[data-edit-goal]');
+  if (editGoalBtn) { openFinancialGoalModal(editGoalBtn.dataset.editGoal); return; }
+  const contributeGoalBtn = e.target.closest('[data-goal-contribute]');
+  if (contributeGoalBtn) { openGoalContributionModal(contributeGoalBtn.dataset.goalContribute); return; }
   if (e.target.closest('#btnAddRecurring') || e.target.closest('#btnAddRecurringEmpty')) { openRecurringModal(); return; }
   const editRecurringBtn = e.target.closest('[data-edit-recurring]');
   if (editRecurringBtn) { openRecurringModal(editRecurringBtn.dataset.editRecurring); return; }
@@ -2227,6 +2550,7 @@ document.addEventListener('input', e => {
   }
   if (e.target.closest('#formTx')) updateTxFxPreview();
   if (e.target.closest('#formTransfer')) updateTransferPreview();
+  if (e.target.closest('#formGoal')) updateGoalPlanPreview();
 });
 
 if (S.ui.theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
