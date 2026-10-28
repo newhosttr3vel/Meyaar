@@ -156,6 +156,89 @@ function goalCurrencyLabel(cur) {
   return ({ EGP: 'ج.م.', SAR: 'ر.س.', USD: '$' })[cur] || String(cur || 'ج.م.');
 }
 
+
+function recurringOccurrenceAlreadyBooked(schedule, dueDate, todayDate, ids, validTransactions) {
+  const due = normalizeGoogleDate(dueDate);
+  const today = normalizeGoogleDate(todayDate);
+  if (!schedule || !isValidISODate(due) || !isValidISODate(today)) return false;
+
+  // Recurrence-linked transactions are authoritative even if their transaction date was adjusted.
+  const linked = validTransactions.some(tx => {
+    const marker = parseRecurringCloudNote(googleNotes(tx));
+    return marker && recurringOccurrenceKey(marker.id, marker.date) === recurringOccurrenceKey(schedule.id, due);
+  });
+  if (linked) return true;
+
+  return validTransactions.some(tx => {
+    const txDate = normalizeGoogleDate(tx.date);
+    if (!isValidISODate(txDate) || txDate > today || tx.type !== 'مصروف' ||
+        String(tx.acc || '') !== String(schedule.acc || '') ||
+        String(tx.cat || '') !== String(schedule.cat || '') ||
+        String(tx.cur || 'EGP') !== String(schedule.cur || 'EGP') ||
+        Math.abs(Number(tx.amt) - Number(schedule.amount)) >= 0.005 ||
+        Math.abs(Number(tx.fee || 0) - Number(schedule.fee || 0)) >= 0.005) return false;
+
+    // Exact due-date signature is a strong enough match; for early payment also require a matching note.
+    if (txDate === due) return true;
+    if (txDate < addCalendarDays(due, -30) || txDate > due) return false;
+    const note = googleNotes(tx).toLocaleLowerCase();
+    const name = String(schedule.name || '').trim().toLocaleLowerCase();
+    const extra = String(schedule.note || '').trim().toLocaleLowerCase();
+    return (name.length >= 3 && note.includes(name)) || (extra.length >= 3 && note.includes(extra));
+  });
+}
+
+function safeToSpendSnapshot(todayDate = localISODate()) {
+  const today = isValidISODate(todayDate) ? todayDate : localISODate();
+  const ids = {};
+  S.tx.forEach(tx => { ids[tx.id] = (ids[tx.id] || 0) + 1; });
+  const validTransactions = S.tx.filter(tx => status(tx, ids) === 'سليم');
+
+  const available = S.accounts.filter(account => account.liq).reduce((total, account) => {
+    const movements = validTransactions
+      .filter(tx => tx.acc === account.code && tx.date <= today)
+      .reduce((sum, tx) => sum + P(tx), 0);
+    return total + Number(account.open || 0) + movements;
+  }, 0);
+
+  // Only unpaid recurring expenses are reservations. Linked/recorded due dates never get subtracted again.
+  const obligations = recurringOccurrences({ fromDate: today, daysAhead: 30, todayDate: today })
+    .filter(item => item.schedule.type === 'مصروف' &&
+      !recurringOccurrenceAlreadyBooked(item.schedule, item.dueDate, today, ids, validTransactions))
+    .map(item => ({
+      key: item.key,
+      dueDate: item.dueDate,
+      scheduleId: item.scheduleId,
+      name: item.schedule.name,
+      cur: item.schedule.cur,
+      amount: Number(item.schedule.amount || 0),
+      fee: Number(item.schedule.fee || 0),
+      amountEGP: toEGP(Number(item.schedule.amount || 0) + Number(item.schedule.fee || 0), item.schedule.cur, today),
+      overdue: item.dueDate < today
+    }));
+
+  const commitments = obligations.reduce((sum, item) => sum + item.amountEGP, 0);
+  // Goal.current is the amount declared as still set aside in liquid funds, not the unfunded target gap.
+  const reservedGoals = (S.financialGoals || [])
+    .filter(goal => goal && goal.active !== false)
+    .reduce((sum, goal) => sum + toEGP(Math.max(0, Number(goal.current) || 0), goal.cur, today), 0);
+  const safe = available - commitments - reservedGoals;
+
+  return {
+    date: today,
+    horizonDays: 30,
+    available,
+    obligations,
+    commitments,
+    reservedGoals,
+    safe,
+    shortfall: Math.max(0, -safe),
+    overdueCount: obligations.filter(item => item.overdue).length,
+    upcomingCount: obligations.filter(item => !item.overdue).length,
+    validTransactionCount: validTransactions.length
+  };
+}
+
 function monthDueDate(year, monthIndex, dueDay) {
   const lastDay = new Date(year, monthIndex + 1, 0).getDate();
   const day = Math.max(1, Math.min(31, Number(dueDay) || 1));
