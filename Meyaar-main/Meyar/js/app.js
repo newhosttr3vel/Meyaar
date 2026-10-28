@@ -284,7 +284,7 @@ async function saveSharedSettingsToGoogle({ manual = false } = {}) {
     console.error('فشلت مزامنة الإعدادات المشتركة:', error);
     if (manual) {
       alert(cloudSettingsStatus +
-        '\\nتأكد من تحديث ونشر كود Google Apps Script الداعم لـ savestate.');
+        '\nتأكد من تحديث ونشر كود Google Apps Script الداعم لـ savestate.');
     }
     if (S.ui.tab === 'set') render();
     return false;
@@ -354,7 +354,7 @@ async function syncExistingTransactionDetailsToGoogle() {
 
   const confirmed = confirm(
     'سيتم تحديث تفاصيل المعاملات الموجودة بالفعل في Google Sheets من بيانات هذا الجهاز، ' +
-    'بما في ذلك الحساب والعملة والرسوم ورمز الأصل والكمية والسعر. لن تتم إضافة صفوف جديدة.\\n\\n' +
+    'بما في ذلك الحساب والعملة والرسوم ورمز الأصل والكمية والسعر. لن تتم إضافة صفوف جديدة.\n\n' +
     'نفّذ هذه الخطوة من الكمبيوتر الذي يحتوي على التفاصيل الصحيحة. هل تريد المتابعة؟'
   );
   if (!confirmed) return;
@@ -387,7 +387,7 @@ async function syncExistingTransactionDetailsToGoogle() {
       summary.push('#' + item.id + ' — ' + item.name + ': ' + item.message)
     );
   }
-  alert(summary.join('\\n'));
+  alert(summary.join('\n'));
   await loadDataFromGoogle();
 }
 
@@ -973,7 +973,7 @@ document.addEventListener('click', e => {
           save(); render();
         }).catch(err => {
           console.error('فشل حذف المعاملة من Google Sheets:', err);
-          const detail = err && err.message ? '\\nالتفاصيل: ' + String(err.message).slice(0, 350) : '';
+          const detail = err && err.message ? '\nالتفاصيل: ' + String(err.message).slice(0, 350) : '';
           alert('لم يتم تأكيد الحذف من Google Sheets، لذلك احتفظت بالمعاملة محليًا.' + detail);
         });
       }
