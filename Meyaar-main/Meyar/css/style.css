@@ -1829,3 +1829,10 @@ code {
     transition: none !important;
   }
 }
+
+/* Preserve the edge-to-edge transaction modal on small phones. */
+@media (max-width: 575.98px) {
+  #modalTx .modal-content {
+    border-radius: 0;
+  }
+}
