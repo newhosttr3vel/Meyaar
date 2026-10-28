@@ -3,7 +3,16 @@ const KEY = 'fin_dash_pro_v2';
 const GOLD = 'ذهب_عيار_21';
 const CATS = ['الأساسيات', 'الرغبات', 'الادخار', 'الاستثمارات', 'الصدقات', 'الطوارئ'];
 const ALLC = [...CATS, 'دخل', 'تحويل داخلي', 'رسوم وضرائب', 'أخرى'];
-const TYPES = ['دخل', 'مصروف', 'شراء أصل', 'بيع أصل', 'تحويل', 'تسوية'];
+const TYPES = ['دخل', 'مصروف', 'شراء ذهب', 'بيع ذهب', 'شراء أسهم', 'بيع أسهم', 'تحويل', 'تسوية'];
+const LEGACY_ASSET_TYPES = ['شراء أصل', 'بيع أصل'];
+const PURCHASE_TYPES = new Set(['شراء ذهب', 'شراء أسهم', 'شراء أصل']);
+const SALE_TYPES = new Set(['بيع ذهب', 'بيع أسهم', 'بيع أصل']);
+const ASSET_TYPES = new Set([...PURCHASE_TYPES, ...SALE_TYPES]);
+const GOLD_TYPES = new Set(['شراء ذهب', 'بيع ذهب']);
+function isAssetPurchase(type) { return PURCHASE_TYPES.has(type); }
+function isAssetSale(type) { return SALE_TYPES.has(type); }
+function isAssetTransaction(type) { return ASSET_TYPES.has(type); }
+function defaultAssetCode(type) { return GOLD_TYPES.has(type) ? GOLD : ''; }
 const PAY = ['نقدي', 'تحويل بنكي', 'بطاقة خصم', 'بطاقة ائتمان', 'ثاندر', 'محفظة إلكترونية', 'أخرى'];
 const MON = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 const COL = ['#0d9488', '#d97706', '#6366f1', '#dc2626', '#8b5cf6', '#16a34a', '#ea580c', '#64748b'];
@@ -240,17 +249,22 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const fee = t => +t.fee || 0;
 const toEGP = (amt, cur) => (+amt || 0) * (S.rates[cur] || 1);
 function status(t, ids) {
-  const ast = ['شراء أصل', 'بيع أصل'].includes(t.type);
+  const asset = isAssetTransaction(t.type);
   if (ids[t.id] > 1) return 'رقم مكرر';
   if (!isValidISODate(t.date) || !Number.isFinite(Number(t.amt)) || !(Number(t.amt) > 0) || !t.type || !t.acc) return 'بيانات ناقصة';
   if (!Number.isFinite(Number(t.fee)) || Number(t.fee) < 0) return 'رسوم غير صحيحة';
   if (!S.accounts.some(a => a.code === t.acc)) return 'حساب غير معروف';
-  if ((ast || t.cat === 'الاستثمارات') && (!t.code || !(+t.qty > 0) || !(+t.price > 0))) return 'بيانات أصل ناقصة';
+  // Asset metadata is optional; holdings are calculated only when code and quantity are usable.
+  if (asset && t.qty !== '' && t.qty !== null && t.qty !== undefined && (!(Number(t.qty) > 0) || !Number.isFinite(Number(t.qty))))
+    return 'الكمية يجب أن تكون رقمًا أكبر من صفر أو تُترك فارغة';
+  if (asset && t.price !== '' && t.price !== null && t.price !== undefined && (!(Number(t.price) >= 0) || !Number.isFinite(Number(t.price))))
+    return 'سعر الوحدة يجب أن يكون صفرًا أو أكبر أو يُترك فارغًا';
   const x = t.type;
   if ((x === 'دخل' && t.cat !== 'دخل') || (t.cat === 'دخل' && x !== 'دخل') ||
       ((x === 'تحويل' || x === 'تسوية') && t.cat !== 'تحويل داخلي') ||
       (t.cat === 'تحويل داخلي' && x !== 'تحويل' && x !== 'تسوية') ||
-      (ast && t.cat !== 'الاستثمارات') || (t.cat === 'الاستثمارات' && x === 'مصروف'))
+      (asset && t.cat !== 'الاستثمارات') ||
+      (t.cat === 'الاستثمارات' && x === 'مصروف'))
     return 'تصنيف لا يطابق النوع';
   return 'سليم';
 }
@@ -258,8 +272,8 @@ function status(t, ids) {
 const P = t => {
   const a = toEGP(t.amt, t.cur), e = toEGP(fee(t), t.cur);
   if (t.type === 'دخل') return a - e;
-  if (t.type === 'مصروف' || t.type === 'شراء أصل' || t.type === 'تحويل') return -(a + e);
-  if (t.type === 'بيع أصل') return a - e;
+  if (t.type === 'مصروف' || isAssetPurchase(t.type) || t.type === 'تحويل') return -(a + e);
+  if (isAssetSale(t.type)) return a - e;
   if (t.type === 'تسوية') return a;
   return 0;
 };
@@ -275,12 +289,12 @@ const priceOf = c => +((S.prices.find(p => p.code === c) || {}).price) || 0;
 
 function hold(v, c) {
   let bq = 0, sq = 0, cost = 0, proc = 0, sf = 0;
-  v.filter(t => t.code === c).forEach(t => {
-    if (t.type === 'شراء أصل') {
-      bq += +t.qty;
-      cost += toEGP(+t.amt + fee(t), t.cur);
-    } else if (t.type === 'بيع أصل') {
-      sq += +t.qty;
+  v.filter(t => t.code === c && Number(t.qty) > 0).forEach(t => {
+    if (isAssetPurchase(t.type)) {
+      bq += Number(t.qty);
+      cost += toEGP(Number(t.amt) + fee(t), t.cur);
+    } else if (isAssetSale(t.type)) {
+      sq += Number(t.qty);
       proc += toEGP(t.amt, t.cur);
       sf += toEGP(fee(t), t.cur);
     }
@@ -330,7 +344,7 @@ function calc() {
   const bud = CATS.map(c => {
     let a = sum(pv.filter(t => t.cat === c), Q);
     if (c === 'الاستثمارات')
-      a += sum(pv.filter(t => t.cat === c && t.type === 'شراء أصل' && t.code !== GOLD), t => toEGP(+t.amt + fee(t), t.cur));
+      a += sum(pv.filter(t => t.cat === c && isAssetPurchase(t.type) && !GOLD_TYPES.has(t.type)), t => toEGP(+t.amt + fee(t), t.cur));
     const b = base * (S.budget[c] || 0);
     const u = b ? a / b : 0;
     return { c, pct: S.budget[c], b, a, u, s: !b ? '—' : u >= 1 ? 'تجاوز' : u >= S.warn ? 'تحذير' : u >= 0.75 ? 'مراقبة' : 'ضمن الخطة' };
@@ -538,7 +552,13 @@ function openTx(t) {
   t = t || { id: Math.max(0, ...S.tx.map(x => +x.id)) + 1, date: localISODate(), name: '', cat: 'الأساسيات', type: 'مصروف', amt: '', fee: 0, pay: 'نقدي', acc: S.accounts[0]?.code || '', code: '', qty: '', price: '', note: '', cur: 'EGP' };
   $('#modalTxTitle').textContent = isNew ? 'معاملة جديدة' : 'تعديل معاملة رقم ' + t.id;
   const form = $('#formTx');
-  form.date.value = t.date; form.elements.namedItem('name').value = t.name || ''; form.type.value = t.type; form.amt.value = t.amt || ''; form.fee.value = t.fee || 0; form.code.value = t.code || ''; form.qty.value = t.qty || ''; form.price.value = t.price || ''; form.note.value = t.note || ''; form.cur.value = t.cur || 'EGP';
+  form.date.value = t.date; form.elements.namedItem('name').value = t.name || ''; form.amt.value = t.amt ?? ''; form.fee.value = t.fee || 0; form.code.value = t.code || defaultAssetCode(t.type); form.qty.value = t.qty ?? ''; form.price.value = t.price ?? ''; form.note.value = t.note || ''; form.cur.value = t.cur || 'EGP';
+  const typeSelect = form.elements.namedItem('type');
+  typeSelect.innerHTML = TYPES.map(type => '<option value="' + esc(type) + '">' + esc(type) + '</option>').join('');
+  if (LEGACY_ASSET_TYPES.includes(t.type)) {
+    typeSelect.insertAdjacentHTML('beforeend', '<option value="' + esc(t.type) + '">' + esc(t.type) + ' (معاملة قديمة)</option>');
+  }
+  typeSelect.value = t.type;
   fillSelect($('#txCat'), ALLC, t.cat); fillSelect($('#txAcc'), S.accounts.map(a => a.code), t.acc); fillSelect($('#txPay'), PAY, t.pay);
   new bootstrap.Modal($('#modalTx')).show();
 }
@@ -555,7 +575,8 @@ $('#formTx').addEventListener('submit', async e => {
   let notesForGoogle = String(d.note || d.name || '').trim();
   if (wasEditing && !noteChanged && !nameChanged) notesForGoogle = previousGoogleNotes || notesForGoogle;
   else if (wasEditing && !noteChanged && nameChanged) notesForGoogle = String(d.name || d.note || '').trim();
-  Object.assign(t, { date: d.date, name: d.name, type: d.type, cat: d.cat, amt: +d.amt, fee: +d.fee || 0, acc: d.acc, pay: d.pay, code: d.code || '', qty: d.qty === '' ? '' : +d.qty, price: d.price === '' ? '' : +d.price, note: d.note || '', googleNotes: notesForGoogle, cur: d.cur || 'EGP', sub: t.sub || '' });
+  const assetCode = String(d.code || defaultAssetCode(d.type) || '').trim();
+  Object.assign(t, { date: d.date, name: d.name, type: d.type, cat: d.cat, amt: +d.amt, fee: +d.fee || 0, acc: d.acc, pay: d.pay, code: assetCode, qty: d.qty === '' ? '' : +d.qty, price: d.price === '' ? '' : +d.price, note: d.note || '', googleNotes: notesForGoogle, cur: d.cur || 'EGP', sub: t.sub || '' });
   const ids = {};
   S.tx.filter(x => !wasEditing || x.id !== oldTx.id).forEach(x => ids[x.id] = (ids[x.id] || 0) + 1);
   const validation = status(t, ids);
