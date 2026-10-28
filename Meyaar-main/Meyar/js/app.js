@@ -141,13 +141,14 @@ async function loadDataFromGoogle({ renderAfter = true } = {}) {
           if (!match.tx.note || match.tx.note === previousNotes) tx.note = notes;
         }
         if (hasFullSchema) {
-          tx.acc = remoteDetails.acc;
-          tx.pay = remoteDetails.pay;
-          tx.cur = remoteDetails.cur;
-          tx.fee = remoteDetails.fee;
-          tx.code = remoteDetails.code;
-          tx.qty = remoteDetails.qty;
-          tx.price = remoteDetails.price;
+          // Empty sheet cells may be legacy blanks; don't destroy richer local values during migration.
+          tx.acc = remoteDetails.acc || match.tx.acc || 'CASH';
+          tx.pay = remoteDetails.pay || match.tx.pay || 'نقدي';
+          tx.cur = remoteDetails.cur || match.tx.cur || 'EGP';
+          tx.fee = row[8] === '' || row[8] === null || row[8] === undefined ? fee(match.tx) : remoteDetails.fee;
+          tx.code = remoteDetails.code || match.tx.code || '';
+          tx.qty = remoteDetails.qty === '' ? (match.tx.qty ?? '') : remoteDetails.qty;
+          tx.price = remoteDetails.price === '' ? (match.tx.price ?? '') : remoteDetails.price;
         } else {
           tx.acc = match.tx.acc || 'CASH';
           tx.pay = match.tx.pay || 'نقدي';
@@ -157,11 +158,12 @@ async function loadDataFromGoogle({ renderAfter = true } = {}) {
           tx.qty = match.tx.qty ?? '';
           tx.price = match.tx.price ?? '';
         }
+        tx.googleSynced = true;
         imported.push(tx);
       } else {
         imported.push({
           id: allocateId(), date, type, amt: amount, cat,
-          note: notes, googleNotes: notes, name: notes || 'معاملة من Google Sheets',
+          note: notes, googleNotes: notes, googleSynced: true, name: notes || 'معاملة من Google Sheets',
           fee: hasFullSchema ? remoteDetails.fee : 0,
           pay: hasFullSchema ? remoteDetails.pay : 'نقدي',
           acc: hasFullSchema ? remoteDetails.acc : 'CASH',
@@ -173,7 +175,11 @@ async function loadDataFromGoogle({ renderAfter = true } = {}) {
       }
     });
 
-    const localOnly = localPool.filter(item => !item.used).map(item => item.tx);
+    // Retain never-synced local transactions for safety. Previously synced rows missing from
+    // Google are removed locally so deletions propagate to other devices.
+    const localOnly = localPool
+      .filter(item => !item.used && !item.tx.googleSynced)
+      .map(item => item.tx);
     S.tx = [...localOnly, ...imported];
     save();
   } catch (error) {
@@ -317,6 +323,7 @@ async function saveTransactionToGoogle(tx) {
   if (result && (result.status === 'error' || result.success === false)) {
     throw new Error(result.message || result.error || 'لم يتم تأكيد الحفظ في Google Sheets');
   }
+  tx.googleSynced = true;
   return result;
 }
 
@@ -769,8 +776,12 @@ $('#formTx').addEventListener('submit', async e => {
     }
     await saveTransactionToGoogle(t);
     if (wasEditing) S.tx = S.tx.filter(x => x.id !== oldTx.id);
+    t.googleSynced = true;
     S.tx.push(t);
-    if (t.code && !S.prices.some(p => p.code === t.code) && t.price) S.prices.push({ code: t.code, cat: 'سهم', price: +t.price, date: '' });
+    if (t.code && !S.prices.some(p => p.code === t.code) && t.price) {
+      S.prices.push({ code: t.code, cat: GOLD_TYPES.has(t.type) ? 'ذهب' : 'سهم', price: +t.price, date: '' });
+      scheduleSharedSettingsSync();
+    }
     save();
     bootstrap.Modal.getInstance($('#modalTx')).hide();
     editingTx = null;
