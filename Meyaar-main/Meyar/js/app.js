@@ -34,6 +34,63 @@ function googleNotes(tx) {
   return String(tx.googleNotes !== undefined ? tx.googleNotes : ((tx.note || tx.name) || '')).trim();
 }
 
+
+// Transfer reference is carried in the existing Notes column to remain compatible with the current A:L sheet schema.
+function makeTransferCloudNote(id, fromCode, toCode, note = '') {
+  const header = 'تحويل داخلي [مرجع:' + id + '] [من:' + fromCode + '] [إلى:' + toCode + ']';
+  return header + (String(note || '').trim() ? '\n' + String(note).trim() : '');
+}
+function parseTransferCloudNote(notes) {
+  const raw = String(notes || '');
+  const match = raw.match(/^تحويل داخلي \[مرجع:([A-Za-z0-9_-]+)\] \[من:([A-Za-z0-9_]+)\] \[إلى:([A-Za-z0-9_]+)\](?:\r?\n([\s\S]*))?$/);
+  if (!match) return null;
+  return { id: match[1], from: match[2], to: match[3], note: match[4] || '' };
+}
+function transferMetadata(tx) {
+  if (!tx) return null;
+  const parsed = parseTransferCloudNote(googleNotes(tx));
+  const id = String(tx.transferId || (parsed && parsed.id) || '');
+  if (!id) return null;
+  return {
+    id,
+    from: String(tx.transferFrom || (parsed && parsed.from) || ''),
+    to: String(tx.transferTo || (parsed && parsed.to) || ''),
+    note: String(tx.transferNote !== undefined ? tx.transferNote : ((parsed && parsed.note) || tx.note || ''))
+  };
+}
+function accountDisplayName(code) {
+  const account = S.accounts.find(item => item.code === code);
+  return account ? account.name : String(code || 'حساب غير معروف');
+}
+function transferDisplayName(type, metadata) {
+  return type === 'تحويل'
+    ? 'تحويل إلى ' + accountDisplayName(metadata.to)
+    : 'تحويل من ' + accountDisplayName(metadata.from);
+}
+function transferPairIssues(transactions = S.tx) {
+  const groups = new Map();
+  transactions.forEach(tx => {
+    const meta = transferMetadata(tx);
+    if (!meta) return;
+    if (!groups.has(meta.id)) groups.set(meta.id, []);
+    groups.get(meta.id).push({ tx, meta });
+  });
+  let issues = 0;
+  groups.forEach(group => {
+    const out = group.find(item => item.tx.type === 'تحويل');
+    const incoming = group.find(item => item.tx.type === 'تسوية');
+    const meta = group[0] && group[0].meta;
+    const invalid = group.length !== 2 || !out || !incoming || !meta ||
+      out.tx.acc !== meta.from || incoming.tx.acc !== meta.to ||
+      out.tx.date !== incoming.tx.date || out.tx.cur !== incoming.tx.cur ||
+      !Number.isFinite(Number(out.tx.amt)) || !Number.isFinite(Number(incoming.tx.amt)) ||
+      Math.abs(Number(out.tx.amt) - Number(incoming.tx.amt)) >= 0.005 ||
+      (out.tx.st && out.tx.st !== 'سليم') || (incoming.tx.st && incoming.tx.st !== 'سليم');
+    if (invalid) issues++;
+  });
+  return issues;
+}
+
 function numericCell(value, fallback = '') {
   if (value === '' || value === null || value === undefined) return fallback;
   const number = Number(value);
@@ -43,6 +100,8 @@ function numericCell(value, fallback = '') {
 function sharedSettingsPayload() {
   return {
     rates: S.rates,
+    baseRates: S.baseRates,
+    rateHistory: S.rateHistory,
     budget: S.budget,
     warn: S.warn,
     accounts: S.accounts,
@@ -200,6 +259,7 @@ async function loadDataFromGoogle({ renderAfter = true } = {}) {
       const notes = String(row[4] || '').trim();
       if (!isValidISODate(date) || !Number.isFinite(amount) || amount <= 0) return;
 
+      const transferMeta = parseTransferCloudNote(notes);
       const remote = { date, type, amt: amount, cat, notes };
       let match = localPool.find(item => !item.used && sameRemoteCore(item.tx, remote) && googleNotes(item.tx) === notes);
       if (!match) {
@@ -244,12 +304,26 @@ async function loadDataFromGoogle({ renderAfter = true } = {}) {
           tx.qty = match.tx.qty ?? '';
           tx.price = match.tx.price ?? '';
         }
+        if (transferMeta) {
+          tx.transferId = transferMeta.id;
+          tx.transferFrom = transferMeta.from;
+          tx.transferTo = transferMeta.to;
+          tx.transferNote = transferMeta.note;
+          tx.note = transferMeta.note;
+          tx.name = transferDisplayName(type, transferMeta);
+        }
         tx.googleSynced = true;
         imported.push(tx);
       } else {
         imported.push({
           id: allocateId(), date, type, amt: amount, cat,
-          note: notes, googleNotes: notes, googleSynced: true, name: notes || 'معاملة من Google Sheets',
+          note: transferMeta ? transferMeta.note : notes,
+          googleNotes: notes, googleSynced: true,
+          name: transferMeta ? transferDisplayName(type, transferMeta) : (notes || 'معاملة من Google Sheets'),
+          transferId: transferMeta ? transferMeta.id : '',
+          transferFrom: transferMeta ? transferMeta.from : '',
+          transferTo: transferMeta ? transferMeta.to : '',
+          transferNote: transferMeta ? transferMeta.note : '',
           fee: hasFullSchema ? remoteDetails.fee : 0,
           pay: hasFullSchema ? remoteDetails.pay : 'نقدي',
           acc: hasFullSchema ? remoteDetails.acc : 'CASH',
@@ -341,12 +415,13 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
     }
 
     const remote = result.state;
-    S = normalizeState({
-      ...S,
-      ...remote,
-      ui: S.ui,
-      tx: S.tx
-    });
+    const localRateHistory = Array.isArray(S.rateHistory) ? S.rateHistory : [];
+    const mergedSharedState = { ...S, ...remote, ui: S.ui, tx: S.tx };
+    if (!Object.prototype.hasOwnProperty.call(remote, 'baseRates')) {
+      mergedSharedState.baseRates = localRateHistory.length ? (S.baseRates || S.rates) : (remote.rates || S.rates);
+    }
+    if (!Array.isArray(remote.rateHistory)) mergedSharedState.rateHistory = localRateHistory;
+    S = normalizeState(mergedSharedState);
     cloudSettingsInitialized = true;
     cloudSettingsLastUpdated = result.updatedAt || remote.updatedAt || '';
     cloudSettingsStatus = 'تم تحميل الإعدادات المشتركة من Google Sheets' +
@@ -523,8 +598,10 @@ const T = (id, date, name, cat, sub, type, amt, acc, pay, code, qty, price, note
 
 function seed() {
   return {
-    ui: { y: 2026, m: 'all', tab: 'dash', q: '', theme: 'light' },
+    ui: { y: 2026, m: 'all', tab: 'dash', q: '', theme: 'light', fxDate: localISODate() },
     rates: { EGP: 1, SAR: 12.9, USD: 48.5 },
+    baseRates: { EGP: 1, SAR: 12.9, USD: 48.5 },
+    rateHistory: [],
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
     warn: 0.9,
     accounts: [
@@ -549,6 +626,7 @@ function normalizeState(input) {
   out.ui.m = out.ui.m === 'all' || /^(0[1-9]|1[0-2])$/.test(String(out.ui.m)) ? String(out.ui.m) : 'all';
   out.ui.q = String(out.ui.q || '');
   out.ui.theme = out.ui.theme === 'dark' ? 'dark' : 'light';
+  out.ui.fxDate = isValidISODate(out.ui.fxDate) ? out.ui.fxDate : localISODate();
 
   out.rates = { ...base.rates, ...obj(input.rates) };
   Object.keys(out.rates).forEach(cur => {
@@ -556,6 +634,28 @@ function normalizeState(input) {
     out.rates[cur] = cur === 'EGP' ? 1 : (Number.isFinite(n) && n > 0 ? n : (base.rates[cur] || 1));
   });
   out.rates.EGP = 1;
+
+  // Migration baseline for old transactions whose original FX rates were never stored.
+  const baseRateSource = Object.keys(obj(input.baseRates)).length ? obj(input.baseRates) : out.rates;
+  out.baseRates = { ...base.rates, ...baseRateSource };
+  Object.keys(out.baseRates).forEach(cur => {
+    const n = Number(out.baseRates[cur]);
+    out.baseRates[cur] = cur === 'EGP' ? 1 : (Number.isFinite(n) && n > 0 ? n : (out.rates[cur] || 1));
+  });
+  out.baseRates.EGP = 1;
+
+  const rateHistoryByKey = new Map();
+  (Array.isArray(input.rateHistory) ? input.rateHistory : []).forEach(item => {
+    if (!item || typeof item !== 'object') return;
+    const date = normalizeGoogleDate(item.date);
+    const cur = String(item.cur || '').trim().toUpperCase();
+    const rate = Number(item.rate);
+    if (!isValidISODate(date) || !cur || cur === 'EGP' || !Number.isFinite(rate) || rate <= 0) return;
+    rateHistoryByKey.set(date + '|' + cur, { date, cur, rate });
+  });
+  out.rateHistory = [...rateHistoryByKey.values()].sort((a, b) =>
+    a.date.localeCompare(b.date) || a.cur.localeCompare(b.cur)
+  );
 
   out.budget = { ...base.budget, ...obj(input.budget) };
   CATS.forEach(cat => {
@@ -577,10 +677,15 @@ function normalizeState(input) {
   out.tx = input.tx.filter(t => t && typeof t === 'object' && !Array.isArray(t)).map((t, i) => {
     const amt = t.amt === '' || t.amt === null ? t.amt : (Number.isFinite(Number(t.amt)) ? Number(t.amt) : t.amt);
     const feeValue = t.fee === undefined || t.fee === null || t.fee === '' ? 0 : (Number.isFinite(Number(t.fee)) ? Number(t.fee) : t.fee);
+    const transferMeta = parseTransferCloudNote(googleNotes(t));
     return { ...t, id: t.id === undefined || t.id === null ? i + 1 : t.id,
       date: normalizeGoogleDate(t.date) || String(t.date || ''), name: String(t.name || ''),
       type: String(t.type || ''), cat: String(t.cat || 'أخرى'), amt, fee: feeValue,
-      acc: String(t.acc || 'CASH'), note: String(t.note || ''), cur: String(t.cur || 'EGP') };
+      acc: String(t.acc || 'CASH'), note: String(t.note || ''), cur: String(t.cur || 'EGP'),
+      transferId: String(t.transferId || (transferMeta && transferMeta.id) || ''),
+      transferFrom: String(t.transferFrom || (transferMeta && transferMeta.from) || ''),
+      transferTo: String(t.transferTo || (transferMeta && transferMeta.to) || ''),
+      transferNote: String(t.transferNote !== undefined ? t.transferNote : ((transferMeta && transferMeta.note) || '')) };
   });
   return out;
 }
@@ -596,7 +701,35 @@ const f = n => (+n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 const pc = n => ((+n || 0) * 100).toFixed(1) + '%';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fee = t => +t.fee || 0;
-const toEGP = (amt, cur) => (+amt || 0) * (S.rates[cur] || 1);
+
+function rateForDate(cur, date = localISODate()) {
+  if (cur === 'EGP') return 1;
+  const effectiveDate = isValidISODate(date) ? date : localISODate();
+  const baseline = Number((S.baseRates || S.rates || {})[cur]) || Number(S.rates[cur]) || 1;
+  const applicable = (S.rateHistory || [])
+    .filter(item => item.cur === cur && item.date <= effectiveDate)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return applicable.length ? Number(applicable[applicable.length - 1].rate) : baseline;
+}
+
+function recordHistoricalRate(cur, rate, effectiveDate) {
+  if (!isValidISODate(effectiveDate) || cur === 'EGP' || !Number.isFinite(Number(rate)) || Number(rate) <= 0) {
+    throw new Error('تاريخ أو سعر الصرف غير صالح');
+  }
+  const value = Number(rate);
+  const existingIndex = S.rateHistory.findIndex(item => item.cur === cur && item.date === effectiveDate);
+  const rateBeforeEdit = rateForDate(cur, effectiveDate);
+  if (existingIndex < 0 && Math.abs(rateBeforeEdit - value) < 1e-9) return false;
+  if (existingIndex >= 0 && Math.abs(Number(S.rateHistory[existingIndex].rate) - value) < 1e-9) return false;
+  if (existingIndex >= 0) S.rateHistory[existingIndex] = { date: effectiveDate, cur, rate: value };
+  else S.rateHistory.push({ date: effectiveDate, cur, rate: value });
+  S.rateHistory.sort((a, b) => a.date.localeCompare(b.date) || a.cur.localeCompare(b.cur));
+  S.rates[cur] = rateForDate(cur, localISODate());
+  S.rates.EGP = 1;
+  return true;
+}
+
+const toEGP = (amt, cur, date = localISODate()) => (+amt || 0) * rateForDate(cur, date);
 function status(t, ids) {
   const asset = isAssetTransaction(t.type);
   if (ids[t.id] > 1) return 'رقم مكرر';
@@ -619,7 +752,7 @@ function status(t, ids) {
 }
 
 const P = t => {
-  const a = toEGP(t.amt, t.cur), e = toEGP(fee(t), t.cur);
+  const a = toEGP(t.amt, t.cur, t.date), e = toEGP(fee(t), t.cur, t.date);
   if (t.type === 'دخل') return a - e;
   if (t.type === 'مصروف' || isAssetPurchase(t.type) || t.type === 'تحويل') return -(a + e);
   if (isAssetSale(t.type)) return a - e;
@@ -628,7 +761,7 @@ const P = t => {
 };
 
 const Q = t => {
-  const a = toEGP(t.amt, t.cur), e = toEGP(fee(t), t.cur);
+  const a = toEGP(t.amt, t.cur, t.date), e = toEGP(fee(t), t.cur, t.date);
   if (t.type === 'مصروف') return a + e;
   if (t.type === 'دخل' || t.type === 'تحويل') return e;
   return 0;
@@ -644,15 +777,15 @@ function summarizeAssetRows(rows, code) {
 
     if (hasQty && isAssetPurchase(t.type)) {
       bq += qty;
-      cost += toEGP(Number(t.amt) + fee(t), t.cur);
+      cost += toEGP(Number(t.amt) + fee(t), t.cur, t.date);
     } else if (hasQty && isAssetSale(t.type)) {
       sq += qty;
-      proc += toEGP(Number(t.amt), t.cur);
-      sf += toEGP(fee(t), t.cur);
+      proc += toEGP(Number(t.amt), t.cur, t.date);
+      sf += toEGP(fee(t), t.cur, t.date);
     } else if (isAssetPurchase(t.type)) {
-      untrackedValue += toEGP(Number(t.amt) + fee(t), t.cur);
+      untrackedValue += toEGP(Number(t.amt) + fee(t), t.cur, t.date);
     } else if (isAssetSale(t.type)) {
-      untrackedValue -= toEGP(Math.max(0, Number(t.amt) - fee(t)), t.cur);
+      untrackedValue -= toEGP(Math.max(0, Number(t.amt) - fee(t)), t.cur, t.date);
     }
   });
 
@@ -696,8 +829,8 @@ function holdGold(v) {
   const fallbackRows = rows.filter(t => !String(t.code || '').trim() ||
     !codes.includes(String(t.code || '').trim()));
   const fallbackValue = fallbackRows.reduce((total, t) => {
-    if (isAssetPurchase(t.type)) return total + toEGP(Number(t.amt) + fee(t), t.cur);
-    if (isAssetSale(t.type)) return total - toEGP(Math.max(0, Number(t.amt) - fee(t)), t.cur);
+    if (isAssetPurchase(t.type)) return total + toEGP(Number(t.amt) + fee(t), t.cur, t.date);
+    if (isAssetSale(t.type)) return total - toEGP(Math.max(0, Number(t.amt) - fee(t)), t.cur, t.date);
     return total;
   }, 0);
 
@@ -730,13 +863,13 @@ function calc() {
 
   const sum = (arr, fn) => arr.reduce((s, t) => s + fn(t), 0);
 
-  const inc = sum(pv.filter(t => t.type === 'دخل'), t => toEGP(t.amt, t.cur));
+  const inc = sum(pv.filter(t => t.type === 'دخل'), t => toEGP(t.amt, t.cur, t.date));
   const exp = sum(pv, Q);
 
   let base = inc;
   if (!all && !inc) {
     const pm = mm === 1 ? `${y - 1}-12` : `${y}-${String(mm - 1).padStart(2, '0')}`;
-    base = sum(v.filter(t => t.type === 'دخل' && t.date.startsWith(pm)), t => toEGP(t.amt, t.cur));
+    base = sum(v.filter(t => t.type === 'دخل' && t.date.startsWith(pm)), t => toEGP(t.amt, t.cur, t.date));
   }
 
   const bal = S.accounts.map(a => ({
@@ -755,8 +888,8 @@ function calc() {
   const unclassifiedStockValue = sum(vt.filter(t =>
     (t.type === 'شراء أسهم' || t.type === 'بيع أسهم') && !String(t.code || '').trim()
   ), t => isAssetPurchase(t.type)
-    ? toEGP(Number(t.amt) + fee(t), t.cur)
-    : -toEGP(Math.max(0, Number(t.amt) - fee(t)), t.cur));
+    ? toEGP(Number(t.amt) + fee(t), t.cur, t.date)
+    : -toEGP(Math.max(0, Number(t.amt) - fee(t)), t.cur, t.date));
   const gold = holdGold(vt);
   const invVal = Math.max(0, sum(inv, h => h.val) + unclassifiedStockValue);
   const sav = sum(v.filter(t => (t.cat === 'الادخار' || t.cat === 'الطوارئ') && t.date <= to), Q);
@@ -764,7 +897,7 @@ function calc() {
   const bud = CATS.map(c => {
     let a = sum(pv.filter(t => t.cat === c), Q);
     if (c === 'الاستثمارات')
-      a += sum(pv.filter(t => t.cat === c && isAssetPurchase(t.type) && !GOLD_TYPES.has(t.type)), t => toEGP(+t.amt + fee(t), t.cur));
+      a += sum(pv.filter(t => t.cat === c && isAssetPurchase(t.type) && !GOLD_TYPES.has(t.type)), t => toEGP(+t.amt + fee(t), t.cur, t.date));
     const b = base * (S.budget[c] || 0);
     const u = b ? a / b : 0;
     return { c, pct: S.budget[c], b, a, u, s: !b ? '—' : u >= 1 ? 'تجاوز' : u >= S.warn ? 'تحذير' : u >= 0.75 ? 'مراقبة' : 'ضمن الخطة' };
@@ -775,7 +908,7 @@ function calc() {
     const x = v.filter(t => t.date.startsWith(k));
     return {
       n,
-      i: sum(x.filter(t => t.type === 'دخل'), t => toEGP(t.amt, t.cur)),
+      i: sum(x.filter(t => t.type === 'دخل'), t => toEGP(t.amt, t.cur, t.date)),
       e: sum(x, Q)
     };
   });
@@ -971,6 +1104,7 @@ function vTx(c) {
   return `
   <div class="filter-bar">
     <button class="btn btn-primary btn-sm" id="btnAddTx"><i class="bi bi-plus-lg"></i> معاملة جديدة</button>
+    <button class="btn btn-outline-primary btn-sm" id="btnAddTransfer" ${S.accounts.length < 2 ? 'disabled title="أضف حسابًا ثانيًا أولًا"' : ''}><i class="bi bi-arrow-left-right"></i> تحويل بين الحسابات</button>
     <input type="search" class="form-control form-control-sm" id="q" placeholder="بحث..." value="${esc(S.ui.q || '')}" style="max-width:220px">
     <span class="note">${rows.length} معاملة — الصفوف غير السليمة مستبعدة من الحسابات</span>
   </div>
@@ -993,9 +1127,14 @@ function vAst(c) {
 
 function vSet() {
   const t = CATS.reduce((s, c) => s + (+S.budget[c] || 0), 0);
+  const rateHistory = [...(S.rateHistory || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
   return `
   <div class="row g-3"><div class="col-lg-6"><div class="box"><h3><i class="bi bi-sliders"></i> نسب الميزانية</h3><table class="table mb-0">${CATS.map(c => `<tr><td>${c}</td><td style="width:120px"><div class="input-group input-group-sm"><input type="number" class="form-control" data-b="${c}" min="0" max="100" step="1" value="${Math.round(S.budget[c] * 100)}"><span class="input-group-text">%</span></div></td></tr>`).join('')}<tr><th>المجموع</th><th style="color:var(--${Math.abs(t - 1) < 0.001 ? 'ok' : 'red'})">${pc(t)}</th></tr><tr><td>حد التحذير</td><td><div class="input-group input-group-sm"><input type="number" class="form-control" data-w="1" min="1" max="100" value="${Math.round(S.warn * 100)}"><span class="input-group-text">%</span></div></td></tr></table></div></div>
-  <div class="col-lg-6"><div class="box"><h3><i class="bi bi-currency-exchange"></i> أسعار الصرف (إلى الجنيه)</h3><table class="table mb-0"><tr><td>ريال سعودي (SAR)</td><td style="width:140px"><input type="number" step="any" class="form-control form-control-sm" data-r="SAR" value="${S.rates.SAR}"></td></tr><tr><td>دولار أمريكي (USD)</td><td><input type="number" step="any" class="form-control form-control-sm" data-r="USD" value="${S.rates.USD}"></td></tr><tr><td>جنيه مصري (EGP)</td><td><input type="number" class="form-control form-control-sm" value="1" disabled></td></tr></table><p class="note mt-2 mb-0">كل المعاملات تُحوَّل إلى الجنيه حسب هذه الأسعار عند الحساب.</p></div></div>
+  <div class="col-lg-6"><div class="box"><h3><i class="bi bi-currency-exchange"></i> أسعار الصرف التاريخية</h3><div class="mb-3"><label class="form-label" for="fxEffectiveDate">تاريخ سريان الأسعار</label><input type="date" class="form-control" id="fxEffectiveDate" value="${S.ui.fxDate}"><p class="note mt-2 mb-0">اختار تاريخ تطبيق السعر، وبعدها عدّل الريال أو الدولار. التقارير ستستخدم السعر الساري في تاريخ كل معاملة.</p></div>
+    <table class="table mb-0"><tr><td>ريال سعودي (SAR)</td><td style="width:140px"><input aria-label="سعر الريال مقابل الجنيه" type="number" min="0.000001" step="any" class="form-control form-control-sm" data-r="SAR" value="${rateForDate('SAR', S.ui.fxDate)}"></td></tr><tr><td>دولار أمريكي (USD)</td><td><input aria-label="سعر الدولار مقابل الجنيه" type="number" min="0.000001" step="any" class="form-control form-control-sm" data-r="USD" value="${rateForDate('USD', S.ui.fxDate)}"></td></tr><tr><td>جنيه مصري (EGP)</td><td><input type="number" class="form-control form-control-sm" value="1" disabled aria-label="الجنيه المصري يساوي جنيهًا واحدًا"></td></tr></table>
+    <p class="note mt-2 mb-0">تعديل تاريخ سابق يعيد حساب المعاملات في ذلك التاريخ وما بعده حتى سجل السعر التالي. المعاملات التي تسبق أول سجل تاريخي ستستخدم سعر الأساس القديم المحفوظ؛ النسخة السابقة لم تكن تحتفظ بأسعار الصرف التاريخية.</p>
+  </div></div>
+  <div class="col-12"><div class="box"><h3><i class="bi bi-clock-history"></i> سجل تغييرات أسعار الصرف</h3><p class="note">آخر 8 تغييرات محفوظة ومشتركة بين أجهزتك.</p><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>تاريخ السريان</th><th>العملة</th><th>السعر مقابل الجنيه</th></tr></thead><tbody>${rateHistory.length ? rateHistory.map(item => '<tr><td>' + esc(item.date) + '</td><td>' + (item.cur === 'SAR' ? 'ريال سعودي (SAR)' : item.cur === 'USD' ? 'دولار أمريكي (USD)' : esc(item.cur)) + '</td><td>' + f(item.rate) + '</td></tr>').join('') : '<tr><td colspan="3" class="text-center note py-3">لا توجد تغييرات تاريخية مسجلة بعد.</td></tr>'}</tbody></table></div></div></div>
   <div class="col-12"><div class="box"><h3><i class="bi bi-cloud-arrow-up"></i> مزامنة الأجهزة</h3><p class="note">بيانات المعاملات في Google Sheets هي المصدر المشترك للأرقام. أي معاملات قديمة لا تطابق صفًا سحابيًا تُحفظ كمعاملات معلقة على هذا الجهاز ولا تدخل في الإجماليات المشتركة إلى أن ترفعها بعد مراجعتها.</p><p class="small mb-2" id="cloudSyncStatus">${esc(cloudSettingsStatus)}</p><p class="small mb-2">عدد المعاملات المحلية المعلقة: <strong>${pendingTransactions().length}</strong></p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnSyncSettings"><i class="bi bi-cloud-check"></i> مزامنة إعدادات هذا الجهاز</button><button class="btn btn-outline-secondary btn-sm" id="btnReloadCloud"><i class="bi bi-arrow-repeat"></i> تحميل الإعدادات من السحابة</button><button class="btn btn-outline-primary btn-sm" id="btnSyncTxDetails"><i class="bi bi-arrow-left-right"></i> ترحيل تفاصيل المعاملات القديمة</button><button class="btn btn-success btn-sm" id="btnSyncPendingTx"><i class="bi bi-cloud-upload"></i> مراجعة ورفع المعاملات المحلية</button></div><p class="note mt-2 mb-0">رفع المعاملات المعلقة يضيف فقط السجلات التي لا يوجد لها تطابق أساسي في Google. أي سجل متشابه يتم تخطيه لتجنب تكرار محتمل. نفّذ العملية من الجهاز الأساسي وبعد أخذ نسخة احتياطية.</p></div></div>
   <div class="col-12"><div class="box"><h3><i class="bi bi-database"></i> النسخ الاحتياطي</h3><p class="note">تقدر تصدّر نسخة JSON أو CSV، وتستخدمها لاسترجاع البيانات عند الحاجة.</p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnExp"><i class="bi bi-download"></i> تصدير JSON</button><button class="btn btn-outline-primary btn-sm" id="btnCsv"><i class="bi bi-filetype-csv"></i> تصدير CSV</button><button class="btn btn-outline-secondary btn-sm" id="btnImp"><i class="bi bi-upload"></i> استيراد</button><button class="btn btn-outline-danger btn-sm" id="btnReset"><i class="bi bi-arrow-counterclockwise"></i> استرجاع التجريبي</button></div></div></div>`;
 }
@@ -1004,12 +1143,14 @@ function vAud(c) {
   const v = c.v;
   const n = fn => S.tx.filter(fn).length;
   const today = localISODate();
-  const tr = v.filter(t => t.type === 'تحويل').reduce((s, t) => s + toEGP(t.amt, t.cur), 0) - v.filter(t => t.type === 'تسوية').reduce((s, t) => s + toEGP(t.amt, t.cur), 0);
+  const tr = v.filter(t => t.type === 'تحويل').reduce((s, t) => s + toEGP(t.amt, t.cur, t.date), 0) - v.filter(t => t.type === 'تسوية').reduce((s, t) => s + toEGP(t.amt, t.cur, t.date), 0);
+  const brokenTransferPairs = transferPairIssues(S.tx);
   const codes = [...new Set(S.tx.filter(t => t.code && t.code !== GOLD).map(t => t.code))];
   const old = S.prices.filter(p => p.price > 0 && (!p.date || (Date.now() - new Date(p.date)) / 864e5 > 30)).length;
   const L = [
     ['صفوف غير سليمة (مستبعدة من الحسابات)', n(t => t.st !== 'سليم'), 'خطأ', 'افتح المعاملات وصلّح الصف'],
     ['الفرق بين التحويلات والتسويات', Math.round(tr * 100) / 100, 'خطأ', 'كل تحويل يحتاج تسوية بنفس المبلغ'],
+    ['تحويلات مِعيار غير مكتملة', brokenTransferPairs, 'خطأ', 'راجع الطرفين أو احذف التحويل الناقص وأعد تسجيله'],
     ['مجموع نسب الميزانية − 100%', Math.round((CATS.reduce((s, k) => s + S.budget[k], 0) - 1) * 1e4) / 1e4, 'خطأ', 'عدّل النسب في الإعدادات'],
     ['أصول بدون سعر', codes.filter(k => !priceOf(k)).length + (c.gold.rem && !priceOf(GOLD) ? 1 : 0), 'خطأ', 'أضف السعر في الأصول'],
     ['أسعار قديمة (>30 يوم أو بلا تاريخ)', old, 'تنبيه', 'حدّث الأسعار'],
@@ -1125,6 +1266,7 @@ document.addEventListener('click', e => {
   const tab = e.target.closest('[data-tab]');
   if (tab) { S.ui.tab = tab.dataset.tab; save(); render(); return; }
   if (e.target.closest('#btnAddTx')) { openTx(); return; }
+  if (e.target.closest('#btnAddTransfer')) { openTransfer(); return; }
   if (e.target.closest('#btnSyncSettings')) { saveSharedSettingsToGoogle({ manual: true }); return; }
   if (e.target.closest('#btnReloadCloud')) { loadSharedSettingsFromGoogle().then(() => render()); return; }
   if (e.target.closest('#btnSyncTxDetails')) { syncExistingTransactionDetailsToGoogle(); return; }
@@ -1155,7 +1297,21 @@ document.addEventListener('click', e => {
     return;
   }
   if (e.target.closest('#btnTheme')) { const cur = document.documentElement.getAttribute('data-theme'); const next = cur === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', next); S.ui.theme = next; save(); render(); return; }
-  if (e.target.closest('#btnExp')) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' })); a.download = 'نسخة_احتياطية_' + localISODate() + '.json'; a.click(); return; }
+  if (e.target.closest('#btnExp')) {
+    const backup = {
+      ...S,
+      backupMeta: { application: 'Meyaar', schemaVersion: 2, exportedAt: new Date().toISOString(),
+        transactionCount: S.tx.length, pendingTransactionCount: pendingTransactions().length }
+    };
+    const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = 'نسخة_احتياطية_مِعيار_' + localISODate() + '.json';
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    showAppToast('تم تجهيز النسخة الاحتياطية. احتفظ بها في مكان آمن.', 5000);
+    return;
+  }
   if (e.target.closest('#btnCsv')) { const h = ['id', 'date', 'name', 'cat', 'sub', 'type', 'amt', 'fee', 'cur', 'pay', 'acc', 'code', 'qty', 'price', 'note']; const rows = [h, ...S.tx.map(t => h.map(k => '"' + String(t[k] ?? '').replace(/"/g, '""') + '"'))]; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' })); a.download = 'المعاملات.csv'; a.click(); return; }
   if (e.target.closest('#btnImp')) { $('#fileImport').click(); return; }
   if (e.target.closest('#btnReset')) { if (confirm('سيتم تصفير البيانات المحلية فقط. لن يتم حذف أي شيء من Google Sheets. هل تريد المتابعة؟')) { S = seed(); save(); loadDataFromGoogle(); render(); } }
@@ -1168,14 +1324,38 @@ document.addEventListener('change', e => {
   if (x.dataset.s) { const r = S[x.dataset.s][x.dataset.i]; const k = x.dataset.k; r[k] = x.type === 'checkbox' ? (x.checked ? 1 : 0) : x.type === 'number' ? +x.value : x.value; if (x.dataset.s === 'prices' && k === 'price' && !r.date) r.date = localISODate(); save(); if (x.dataset.s === 'accounts' || x.dataset.s === 'prices') scheduleSharedSettingsSync(); render(); return; }
   if (x.dataset.b) { S.budget[x.dataset.b] = (+x.value || 0) / 100; save(); scheduleSharedSettingsSync(); render(); return; }
   if (x.dataset.w) { S.warn = (+x.value || 90) / 100; save(); scheduleSharedSettingsSync(); render(); return; }
-  if (x.dataset.r) { const rate = Number(x.value); if (!Number.isFinite(rate) || rate <= 0) { alert('سعر الصرف يجب أن يكون رقماً أكبر من صفر.'); render(); return; } S.rates[x.dataset.r] = rate; save(); scheduleSharedSettingsSync(); render(); return; }
+  if (x.id === 'fxEffectiveDate') {
+    if (!isValidISODate(x.value)) { alert('اختار تاريخًا صحيحًا لتطبيق سعر الصرف.'); render(); return; }
+    S.ui.fxDate = x.value;
+    save();
+    render();
+    return;
+  }
+  if (x.dataset.r) {
+    const rate = Number(x.value);
+    const effectiveDate = isValidISODate(S.ui.fxDate) ? S.ui.fxDate : localISODate();
+    if (!Number.isFinite(rate) || rate <= 0) { alert('سعر الصرف يجب أن يكون رقماً أكبر من صفر.'); render(); return; }
+    if (effectiveDate < localISODate() && !confirm('أنت تعدّل سعر صرف بتاريخ سابق. سيتم إعادة حساب المعاملات من هذا التاريخ حتى سجل السعر التالي. هل تريد المتابعة؟')) { render(); return; }
+    if (!recordHistoricalRate(x.dataset.r, rate, effectiveDate)) {
+      showAppToast('السعر مطابق بالفعل للسعر المحفوظ في هذا التاريخ.', 4000);
+      render();
+      return;
+    }
+    save();
+    scheduleSharedSettingsSync();
+    render();
+    showAppToast('تم حفظ سعر الصرف التاريخي ومزامنته عند اكتمال الاتصال.', 5000);
+    return;
+  }
   if (x.id === 'fileImport') {
     const r = new FileReader();
     r.onload = () => {
       try {
         const d = JSON.parse(r.result);
         if (!d || typeof d !== 'object' || !Array.isArray(d.tx) || !Array.isArray(d.accounts)) throw new Error('بنية الملف غير صحيحة');
-        S = normalizeState(d);
+        const importedData = { ...d };
+        delete importedData.backupMeta;
+        S = normalizeState(importedData);
         save(); scheduleSharedSettingsSync(); render();
       } catch (_) { alert('الملف غير صالح'); }
     };
