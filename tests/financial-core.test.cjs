@@ -121,8 +121,8 @@ assert.match(html, /id="txFxPreview"/, 'The transaction FX preview is visible to
 assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal opener exists');
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
-assert.match(html, /style\.css\?v=20261028-finance1/, 'Updated CSS cache version is active');
-assert.match(html, /app\.js\?v=20261028-finance1/, 'Updated JS cache version is active');
+assert.match(html, /style\.css\?v=20261028-recurring1/, 'Updated CSS cache version is active');
+assert.match(html, /app\.js\?v=20261028-recurring1/, 'Updated JS cache version is active');
 
 
 
