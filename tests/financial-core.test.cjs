@@ -26,6 +26,7 @@ globalThis.__financeTest = {
   goalProgress,
   goalMonthsRemaining,
   goalMonthlyRequired,
+  safeToSpendSnapshot,
   makeRecurringCloudNote,
   parseRecurringCloudNote,
   recurringOccurrences,
@@ -126,16 +127,16 @@ assert.match(html, /id="txFxPreview"/, 'The transaction FX preview is visible to
 assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal opener exists');
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
-assert.match(html, /style\.css\?v=20261028-goals1/, 'Updated CSS cache version is active');
-assert.match(html, /app\.js\?v=20261028-goals1/, 'Updated JS cache version is active');
+assert.match(html, /style\.css\?v=20261028-safe1/, 'Updated CSS cache version is active');
+assert.match(html, /app\.js\?v=20261028-safe1/, 'Updated JS cache version is active');
 assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
 assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
 assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists');
 for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory', 'recAccount', 'recStartDate', 'recDueDay', 'recReminderDays']) {
   assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
 }
-assert.match(html, /style\.css\?v=20261028-goals1/, 'Recurring CSS cache version is active');
-assert.match(html, /app\.js\?v=20261028-goals1/, 'Recurring JS cache version is active');
+assert.match(html, /style\.css\?v=20261028-safe1/, 'Recurring CSS cache version is active');
+assert.match(html, /app\.js\?v=20261028-safe1/, 'Recurring JS cache version is active');
 assert.match(css, /\.recurring-hero/, 'The recurring page has its own visual treatment');
 assert.match(css, /#modalRecurring[\s\S]*?overflow-y:auto/, 'The recurring modal has a mobile scroll layout');
 assert.match(source, /function checkRecurringReminders\(\)/, 'Recurring reminders are checked while the site is open');
@@ -215,4 +216,62 @@ assert.match(source, /S\.financialGoals = S\.financialGoals\.map\(item => item\.
 assert.match(css, /\.goal-card/, 'Goal cards have dedicated responsive styling');
 
 
-console.log('Meyaar financial-core tests passed: dated FX, transfers, recurring dates, goal plans, occurrence idempotency, and UI wiring.');
+
+// Safe-to-spend forecast: use today's liquid balances, deduct unpaid obligations once, and reserve only goal balances.
+const safetyState = makeState({
+  accounts: [
+    { code: 'CASH', name: 'النقدية', type: 'نقد', open: 10000, liq: 1 },
+    { code: 'BANK', name: 'الحساب البنكي', type: 'بنك', open: 40000, liq: 1 },
+    { code: 'THNDR', name: 'محفظة ثاندر', type: 'وسيط', open: 30000, liq: 0 }
+  ],
+  tx: [{
+    id: 44, date: '2026-10-20', type: 'مصروف', amt: 4000, fee: 0,
+    cat: 'الأساسيات', acc: 'CASH', cur: 'EGP', pay: 'نقدي',
+    note: 'إيجار الشقة', name: 'إيجار الشقة'
+  }],
+  recurringSchedules: [
+    { id: 'REC-RENT', name: 'إيجار الشقة', type: 'مصروف', cat: 'الأساسيات', amount: 4000, fee: 0, cur: 'EGP', acc: 'CASH', pay: 'نقدي', startDate: '2026-10-01', dueDay: 20, reminderDays: 3, note: 'إيجار الشقة', active: true, createdAt: '2026-10-01T00:00:00.000Z' },
+    { id: 'REC-INTERNET', name: 'فاتورة النت', type: 'مصروف', cat: 'الأساسيات', amount: 1000, fee: 0, cur: 'EGP', acc: 'BANK', pay: 'تحويل بنكي', startDate: '2026-10-01', dueDay: 31, reminderDays: 3, note: '', active: true, createdAt: '2026-10-01T00:00:00.000Z' },
+    { id: 'REC-OLD-SUB', name: 'اشتراك قديم غير مدفوع', type: 'مصروف', cat: 'الرغبات', amount: 2000, fee: 0, cur: 'EGP', acc: 'BANK', pay: 'نقدي', startDate: '2026-08-01', dueDay: 5, reminderDays: 3, note: '', active: true, createdAt: '2026-08-01T00:00:00.000Z' },
+    { id: 'REC-SALARY', name: 'المرتب المتوقع', type: 'دخل', cat: 'دخل', amount: 100000, fee: 0, cur: 'EGP', acc: 'BANK', pay: 'تحويل بنكي', startDate: '2026-10-01', dueDay: 28, reminderDays: 3, note: '', active: true, createdAt: '2026-10-01T00:00:00.000Z' }
+  ],
+  financialGoals: [
+    { id: 'GOAL-RESERVE', name: 'صندوق الطوارئ', category: 'احتياطي الطوارئ', target: 20000, current: 8000, cur: 'EGP', deadline: '2027-10-20', note: '', active: true, createdAt: '2026-10-01T00:00:00.000Z', history: [] }
+  ]
+});
+api.setState(safetyState);
+const safety = api.safeToSpendSnapshot('2026-10-28');
+assert.equal(safety.available, 46000, 'Safe-to-spend starts from opening balances plus valid movements through today, excluding non-liquid assets');
+assert.equal(safety.commitments, 13000, 'The forecast includes unpaid old months and upcoming bills but excludes the already-paid matching rent and expected income');
+assert.equal(safety.reservedGoals, 8000, 'Only the current amount reserved in active goals is subtracted, not their unfilled target gaps');
+assert.equal(safety.safe, 25000, 'Safe-to-spend applies available minus commitments minus reserved goals');
+assert.equal(safety.overdueCount, 3, 'Every overdue unpaid month is included in the safety estimate');
+assert.equal(safety.obligations.some(item => item.name === 'المرتب المتوقع'), false, 'Expected recurring income is not treated as confirmed cash');
+assert.equal(safety.obligations.some(item => item.name === 'إيجار الشقة' && item.dueDate === '2026-10-20'), false,
+  'A valid transaction matching the exact due-date signature is not deducted a second time');
+assert.equal(safety.obligations.some(item => item.name === 'إيجار الشقة' && item.dueDate === '2026-11-20'), true,
+  'The next unpaid occurrence of the same recurring rent is still reserved');
+
+api.setState(makeState({
+  accounts: [
+    { code: 'CASH', name: 'النقدية', type: 'نقد', open: 1000, liq: 1 },
+    { code: 'BANK', name: 'الحساب البنكي', type: 'بنك', open: 0, liq: 1 }
+  ],
+  recurringSchedules: [
+    { id: 'REC-EXPENSIVE', name: 'قسط مستحق', type: 'مصروف', cat: 'الأساسيات', amount: 5000, fee: 0, cur: 'EGP', acc: 'CASH', pay: 'نقدي', startDate: '2026-10-01', dueDay: 30, reminderDays: 0, note: '', active: true, createdAt: '' }
+  ],
+  financialGoals: [
+    { id: 'GOAL-TOO-MUCH', name: 'هدف محجوز', category: 'ادخار عام', target: 10000, current: 2000, cur: 'EGP', deadline: '2027-10-28', active: true, history: [] }
+  ]
+}));
+const shortSafety = api.safeToSpendSnapshot('2026-10-28');
+assert.equal(shortSafety.safe, -6000, 'The indicator can go negative when commitments and goal reserves exceed liquid funds');
+assert.equal(shortSafety.shortfall, 6000, 'The forecast exposes the amount of the expected cash shortfall');
+assert.ok(html.includes('safe-spend-panel') && html.includes('safe-spend-assumptions'),
+  'Dashboard includes the indicator and an expandable assumptions note');
+assert.match(source, /function safeToSpendSnapshot\(/, 'The safe-to-spend calculation is implemented in the financial core');
+assert.match(source, /التزاماتك وحجوزاتك تتجاوز السيولة الحالية/, 'The dashboard warns when the projected cash is insufficient');
+assert.match(css, /\.safe-spend-panel/, 'The safe-to-spend indicator has dedicated responsive styling');
+
+
+console.log('Meyaar financial-core tests passed: dated FX, transfers, recurring dates, goal plans, safe-to-spend forecast, occurrence idempotency, and UI wiring.');
