@@ -1,0 +1,18 @@
+{
+  "name": "Meyaar | معيار",
+  "short_name": "Meyaar",
+  "description": "إدارة أموالك بذكاء",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#102b38",
+  "icons": [
+    {
+      "src": "assets/meyaar-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

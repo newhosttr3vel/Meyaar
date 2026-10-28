@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="190" viewBox="0 0 720 190" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Meyaar | معيار</title>
+  <desc id="desc">Meyaar smart financial management brand mark</desc>
+  <defs>
+    <linearGradient id="bg" x1="4" y1="3" x2="96" y2="98" gradientUnits="userSpaceOnUse"><stop stop-color="#173E4B"/><stop offset="1" stop-color="#08272F"/></linearGradient>
+    <linearGradient id="teal" x1="25" y1="27" x2="74" y2="78" gradientUnits="userSpaceOnUse"><stop stop-color="#63D5C2"/><stop offset="1" stop-color="#0B998B"/></linearGradient>
+    <linearGradient id="gold" x1="22" y1="18" x2="83" y2="54" gradientUnits="userSpaceOnUse"><stop stop-color="#FCE7A2"/><stop offset="1" stop-color="#D7A34E"/></linearGradient>
+  </defs>
+  <g transform="translate(20 20) scale(1.5)">
+    <rect x="1" y="1" width="98" height="98" rx="25" fill="url(#bg)" stroke="#6BCBBE" stroke-opacity=".26" stroke-width="1.2"/>
+    <path d="M22 76V55C22 49 28 46 33 50L42 57C46 60 50 56 54 51L72 31" stroke="url(#teal)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M25 76V64M43 76V60M61 76V48" stroke="url(#teal)" stroke-width="9" stroke-linecap="round"/>
+    <path d="M51 50L72 31L69 23L84 18L81 34L76 31" stroke="url(#gold)" stroke-width="5.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M18 82H82" stroke="#D5E9E8" stroke-opacity=".14" stroke-width="1.4" stroke-linecap="round"/>
+  </g>
+  <text x="215" y="88" fill="#173E4B" font-family="Cairo, Segoe UI, Arial, sans-serif" font-size="59" font-weight="800" letter-spacing="-1">Meyaar</text>
+  <text x="692" y="89" fill="#0D827A" font-family="Cairo, Segoe UI, Arial, sans-serif" font-size="41" font-weight="800" text-anchor="end">معيار</text>
+  <path d="M218 110H692" stroke="#D7A34E" stroke-width="2" stroke-linecap="round" opacity=".78"/>
+  <text x="692" y="148" fill="#66788B" font-family="Cairo, Segoe UI, Arial, sans-serif" font-size="20" font-weight="600" text-anchor="end">إدارة أموالك بذكاء</text>
+</svg>

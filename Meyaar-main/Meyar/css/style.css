@@ -1849,3 +1849,64 @@ code {
     font-size: 16px;
   }
 }
+
+
+/* Meyaar brand system — distinctive mark, cleaner wordmark and browser identity */
+.navbar-brand {
+  align-items: center;
+  padding-block: .25rem;
+  text-decoration: none;
+}
+.navbar-brand .brand-mark {
+  display: block;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 12px;
+  filter: drop-shadow(0 4px 10px rgba(3, 17, 26, .24));
+}
+.navbar-brand .brand-name {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: .18rem;
+  min-width: 0;
+  overflow: hidden;
+  white-space: normal;
+  text-overflow: clip;
+  line-height: 1.15;
+}
+.navbar-brand .brand-name strong {
+  display: block;
+  color: #f3f8f9;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: .1px;
+  line-height: 1.25;
+}
+.navbar-brand .brand-name small {
+  display: block;
+  max-width: 260px;
+  overflow: hidden;
+  color: #aec5cc;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .66rem;
+  font-weight: 600;
+  letter-spacing: .05px;
+  line-height: 1.4;
+}
+@media (max-width: 575.98px) {
+  .navbar-brand .brand-mark {
+    width: 35px;
+    height: 35px;
+    flex-basis: 35px;
+    border-radius: 10px;
+  }
+  .navbar-brand .brand-name strong {
+    font-size: .94rem;
+  }
+  .navbar-brand .brand-name small {
+    display: none;
+  }
+}
