@@ -1476,8 +1476,74 @@ function vDash(c) {
   const cloudBanner = cloudWarnings.length
     ? '<div class="alert alert-warning small">' + cloudWarnings.join('<br>') + '</div>'
     : '';
+
+  const safety = safeToSpendSnapshot(localISODate());
+  const safetyWarnings = [];
+  if (!googleTransactionsLoaded) safetyWarnings.push('لم تكتمل قراءة المعاملات من Google Sheets؛ السيولة الحالية قد لا تكون محدثة.');
+  if (!cloudSettingsInitialized) safetyWarnings.push('لم يتم تأكيد تحميل الأهداف والالتزامات المشتركة؛ راجع مزامنة الإعدادات قبل الاعتماد على الرقم.');
+  if (pendingCount) safetyWarnings.push('يوجد ' + pendingCount + ' معاملة محلية معلقة؛ قد تختلف الأرقام عن البيانات المشتركة.');
+  const safetyUncertain = safetyWarnings.length > 0;
+  const safetyStatus = safety.safe < 0 ? 'عجز متوقع' : safetyUncertain ? 'تقدير غير مكتمل' : 'تقدير مبدئي';
+  const safetyAmount = (safety.safe < 0 ? '−' : '') + f(Math.abs(safety.safe));
+  const safetyObligationRows = safety.obligations.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 4);
+  const safetyObligationList = safetyObligationRows.length
+    ? '<div class="safe-spend-obligation-list">' + safetyObligationRows.map(item =>
+        '<div class="safe-spend-obligation"><div><strong>' + esc(item.name) + '</strong><span>' +
+        esc(item.dueDate) + (item.overdue ? ' · متأخر' : ' · خلال 30 يومًا') +
+        '</span></div><b>' + f(item.amountEGP) + ' ج.م.</b></div>'
+      ).join('') + (safety.obligations.length > safetyObligationRows.length
+        ? '<p class="note mb-0 mt-2">و' + (safety.obligations.length - safetyObligationRows.length) + ' استحقاق إضافي ضمن الحساب.</p>' : '') +
+      '</div>'
+    : '<p class="note mb-0">لا توجد التزامات دورية غير مسجلة في الفترة الحالية حسب البيانات المتاحة.</p>';
+  const safeSpendPanel = `
+    <section class="safe-spend-panel ${safety.safe < 0 ? 'is-deficit' : ''} mb-3" aria-labelledby="safeSpendTitle">
+      <div class="safe-spend-header">
+        <div class="safe-spend-title">
+          <span class="safe-spend-eyebrow"><i class="bi bi-shield-check"></i> قرار مالي أوضح</span>
+          <h3 id="safeSpendTitle">المتاح للصرف بأمان</h3>
+          <p>تقدير السيولة التي تبقى بعد حجز الالتزامات الدورية غير المسجلة خلال 30 يومًا، والمتأخرات، والمبالغ المخصصة للأهداف.</p>
+        </div>
+        <span class="safe-spend-status ${safety.safe < 0 ? 'is-deficit' : safetyUncertain ? 'is-uncertain' : ''}">${safetyStatus}</span>
+      </div>
+      <div class="safe-spend-main">
+        <div class="safe-spend-result">
+          <span>${safety.safe < 0 ? 'العجز المتوقع لتغطية الالتزامات والحجوزات' : 'المبلغ التقديري المتبقي'}</span>
+          <strong>${safetyAmount} <small>ج.م.</small></strong>
+          <p>${safety.safe < 0 ? 'المطلوب توفيره لتغطية الالتزامات والمبالغ المحجوزة بالكامل، قبل أي إنفاق إضافي.' : safety.safe === 0 ? 'السيولة الحالية مخصصة بالكامل للالتزامات والأهداف المحجوزة.' : 'هذا تقدير وليس ضمانًا؛ راجع المصروفات الفعلية وغير الدورية قبل قرار الصرف.'}</p>
+        </div>
+        <div class="safe-spend-breakdown">
+          <div class="safe-spend-line"><span><i class="bi bi-wallet2"></i> الأموال المتاحة في الحسابات السائلة</span><strong>${f(safety.available)} ج.م.</strong></div>
+          <div class="safe-spend-line is-deduction"><span><i class="bi bi-calendar2-check"></i> الالتزامات غير المسجلة المستحقة</span><strong>− ${f(safety.commitments)} ج.م.</strong></div>
+          <div class="safe-spend-line is-deduction"><span><i class="bi bi-bullseye"></i> المبالغ المحجوزة للأهداف</span><strong>− ${f(safety.reservedGoals)} ج.م.</strong></div>
+          <div class="safe-spend-equation"><span>السيولة − الالتزامات − حجوزات الأهداف</span><b>${safetyAmount} ج.م.</b></div>
+        </div>
+      </div>
+      ${safety.safe < 0
+        ? '<div class="safe-spend-alert is-deficit"><i class="bi bi-exclamation-triangle-fill"></i><div><strong>التزاماتك وحجوزاتك تتجاوز السيولة الحالية بمقدار ' + f(safety.shortfall) + ' ج.م.</strong><p>راجع مواعيد الالتزامات والمبالغ المحجوزة، وقلل المصروفات الاختيارية لحين تغطية الفرق.</p></div></div>'
+        : '<div class="safe-spend-alert"><i class="bi bi-info-circle"></i><div><strong>التغطية المحسوبة لا تشمل المصروفات الطارئة أو الالتزامات التي لم تُسجّل في النظام.</strong><p>خلي هامش أمان للطوارئ، وما تعتبرش كامل المتبقي ميزانية إنفاق إلزامية.</p></div></div>'}
+      ${safetyWarnings.length ? '<div class="safe-spend-alert is-uncertain"><i class="bi bi-cloud-exclamation"></i><div><strong>راجع اكتمال المزامنة</strong><ul class="mb-0 mt-1">' + safetyWarnings.map(message => '<li>' + esc(message) + '</li>').join('') + '</ul></div></div>' : ''}
+      <div class="safe-spend-lower">
+        <div class="safe-spend-facts"><span><b>${safety.overdueCount}</b> التزامات متأخرة غير مسجلة</span><span><b>${safety.upcomingCount}</b> استحقاقات خلال 30 يومًا</span><span><b>${(S.financialGoals || []).filter(goal => goal && goal.active !== false).length}</b> أهداف ضمن الحجز</span></div>
+        <details class="safe-spend-details">
+          <summary>عرض الالتزامات التي تم حجزها</summary>
+          ${safetyObligationList}
+        </details>
+      </div>
+      <details class="safe-spend-assumptions">
+        <summary>طريقة الحساب والافتراضات المهمة</summary>
+        <ul>
+          <li>السيولة هي أرصدة الحسابات المعلّمة «ضمن السيولة»، محسوبة من الأرصدة الافتتاحية والمعاملات السليمة حتى تاريخ اليوم، بغض النظر عن فترة التقرير المختارة.</li>
+          <li>يُخصم كل استحقاق مصروف متكرر غير مسجل حتى 30 يومًا قادمًا، وكذلك كل الاستحقاقات السابقة غير المسجلة منذ بداية الجدول. الدخل الدوري لا يُعتبر سيولة مضمونة ولا يدخل في الحساب.</li>
+          <li>الاستحقاق الذي سُجل فعلًا لا يُخصم ثانية إذا كان مرتبطًا بمرجع الالتزام، أو طابق معاملة سليمة في تاريخ الاستحقاق بالحساب والتصنيف والعملة والمبلغ والرسوم نفسها. الدفع المبكر يحتاج ملاحظة تطابق اسم الالتزام أو ملاحظته.</li>
+          <li>المحجوز للأهداف هو الرصيد الحالي لكل هدف نشط، وليس الجزء غير الممول من المبلغ المستهدف. اعتبر هذا الرصيد مالًا ما زال موجودًا داخل السيولة ومخصصًا للهدف؛ لا تُدخل قيمة أصل تم شراؤه بالفعل أو مبلغًا مصروفًا. لا تخصص نفس المبلغ لأكثر من هدف.</li>
+          <li>كل المبالغ المعروضة بالجنيه المصري وباستخدام أسعار مِعيار المتاحة، ولا يشمل التقدير فواتير غير مسجلة أو مصروفات غير دورية أو تغيرات مستقبلية في الدخل والأسعار.</li>
+        </ul>
+      </details>
+    </section>`;
+
   return `
   ${cloudBanner}
+  ${safeSpendPanel}
   <div class="filter-bar">
     <select class="form-select form-select-sm" id="fy">${ys.map(y => `<option ${y == S.ui.y ? 'selected' : ''}>${y}</option>`).join('')}</select>
     <select class="form-select form-select-sm" id="fm"><option value="all">السنة كاملة</option>${MON.map((n, i) => `<option value="${String(i + 1).padStart(2, '0')}" ${S.ui.m === String(i + 1).padStart(2, '0') ? 'selected' : ''}>${n}</option>`).join('')}</select>
