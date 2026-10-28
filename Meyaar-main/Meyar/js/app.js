@@ -82,6 +82,7 @@ function transferPairIssues(transactions = S.tx) {
     const meta = group[0] && group[0].meta;
     const invalid = group.length !== 2 || !out || !incoming || !meta ||
       out.tx.acc !== meta.from || incoming.tx.acc !== meta.to ||
+      meta.from === meta.to || String(out.tx.id) === String(incoming.tx.id) ||
       out.tx.date !== incoming.tx.date || out.tx.cur !== incoming.tx.cur ||
       !Number.isFinite(Number(out.tx.amt)) || !Number.isFinite(Number(incoming.tx.amt)) ||
       Math.abs(Number(out.tx.amt) - Number(incoming.tx.amt)) >= 0.005 ||
@@ -1182,13 +1183,18 @@ let editingTx = null;
 let editingTransfer = null;
 let transferInFlight = false;
 
-function accountBalanceAt(code, date) {
+function accountBalanceAt(code, date, excludeTransferId = '') {
   const account = S.accounts.find(item => item.code === code);
   if (!account) return 0;
   const ids = {};
   S.tx.forEach(tx => { ids[tx.id] = (ids[tx.id] || 0) + 1; });
   return Number(account.open || 0) + S.tx
-    .filter(tx => tx.acc === code && tx.date <= date && status(tx, ids) === 'سليم')
+    .filter(tx => {
+      const meta = excludeTransferId ? transferMetadata(tx) : null;
+      return tx.acc === code && tx.date <= date &&
+        !(meta && meta.id === excludeTransferId) &&
+        status(tx, ids) === 'سليم';
+    })
     .reduce((sum, tx) => sum + P(tx), 0);
 }
 
@@ -1231,7 +1237,9 @@ function updateTransferPreview() {
   const feeAmount = Number(form.elements.namedItem('fee').value) || 0;
   const rate = rateForDate(cur, date);
   const sent = Math.max(0, Number.isFinite(amount) ? amount : 0);
-  const fromBal = accountBalanceAt(fromCode, date), toBal = accountBalanceAt(toCode, date);
+  const excludedTransferId = editingTransfer ? editingTransfer.meta.id : '';
+  const fromBal = accountBalanceAt(fromCode, date, excludedTransferId);
+  const toBal = accountBalanceAt(toCode, date, excludedTransferId);
   const debit = (sent + feeAmount) * rate, credit = sent * rate;
   const shortfall = sent > 0 && fromBal + 0.005 < debit;
   preview.innerHTML =
@@ -1339,7 +1347,8 @@ $('#formTransfer').addEventListener('submit', async e => {
   }
   const outStatus = status(outgoing, ids), inStatus = status(incoming, ids);
   if (outStatus !== 'سليم' || inStatus !== 'سليم') { alert('تعذر إنشاء التحويل: ' + (outStatus !== 'سليم' ? outStatus : inStatus)); return; }
-  const debit = toEGP(amount + feeAmount, cur, date), sourceBalance = accountBalanceAt(fromCode, date);
+  const debit = toEGP(amount + feeAmount, cur, date);
+  const sourceBalance = accountBalanceAt(fromCode, date, editingTransfer ? editingTransfer.meta.id : '');
   if (sourceBalance + 0.005 < debit && !confirm('رصيد حساب المصدر في التاريخ المحدد أقل من مبلغ التحويل والرسوم. هل تريد تسجيل الرصيد السالب؟')) return;
 
   transferInFlight = true;
