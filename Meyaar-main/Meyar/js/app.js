@@ -1429,6 +1429,281 @@ function render() {
 let editingTx = null;
 let txSaveInFlight = false;
 
+let recurringSaveInFlight = false;
+const recurringGenerationInFlight = new Set();
+
+function recurringCategoryList(type) {
+  return type === 'دخل' ? ['دخل'] : [...CATS.filter(cat => cat !== 'الاستثمارات'), 'رسوم وضرائب', 'أخرى'];
+}
+
+function populateRecurringCategories(type, selected) {
+  fillSelect($('#recCategory'), recurringCategoryList(type), selected || (type === 'دخل' ? 'دخل' : 'الأساسيات'));
+}
+
+function openRecurringModal(id = '') {
+  if (txSaveInFlight || transferInFlight || recurringSaveInFlight || recurringGenerationInFlight.size) {
+    showAppToast('هناك عملية حفظ قيد التنفيذ. انتظر تأكيدها قبل بدء عملية أخرى.', 4000);
+    return;
+  }
+  const schedule = id ? recurringScheduleFor(id) : null;
+  if (id && !schedule) {
+    showAppToast('لم أجد الالتزام المطلوب. حدّث الصفحة وحاول مرة أخرى.', 4500);
+    return;
+  }
+
+  const form = $('#formRecurring');
+  form.reset();
+  form.elements.namedItem('id').value = schedule ? schedule.id : '';
+  form.elements.namedItem('name').value = schedule ? schedule.name : '';
+  form.elements.namedItem('type').value = schedule ? schedule.type : 'مصروف';
+  populateRecurringCategories(schedule ? schedule.type : 'مصروف', schedule ? schedule.cat : 'الأساسيات');
+  const accountOptions = S.accounts.map(account =>
+    '<option value="' + esc(account.code) + '">' + esc(account.name) + ' (' + esc(account.code) + ')</option>'
+  ).join('');
+  form.elements.namedItem('acc').innerHTML = accountOptions;
+  form.elements.namedItem('acc').value = schedule ? schedule.acc : (S.accounts[0] ? S.accounts[0].code : '');
+  fillSelect(form.elements.namedItem('pay'), PAY, schedule ? schedule.pay : 'نقدي');
+  form.elements.namedItem('amount').value = schedule ? schedule.amount : '';
+  form.elements.namedItem('fee').value = schedule ? schedule.fee : 0;
+  form.elements.namedItem('cur').value = schedule ? schedule.cur : 'EGP';
+  form.elements.namedItem('startDate').value = schedule ? schedule.startDate : localISODate();
+  form.elements.namedItem('dueDay').value = schedule ? schedule.dueDay : Number(localISODate().slice(-2));
+  form.elements.namedItem('reminderDays').value = schedule ? schedule.reminderDays : 3;
+  form.elements.namedItem('note').value = schedule ? schedule.note : '';
+  $('#modalRecurringTitle').textContent = schedule ? 'تعديل الالتزام المتكرر' : 'التزام متكرر جديد';
+  $('#btnSaveRecurring').innerHTML = schedule
+    ? '<i class="bi bi-check-lg"></i> حفظ التعديلات'
+    : '<i class="bi bi-check-lg"></i> حفظ الالتزام';
+  new bootstrap.Modal($('#modalRecurring')).show();
+}
+
+function sameRecurringDefinition(a, b) {
+  return String(a.name || '').trim().toLocaleLowerCase() === String(b.name || '').trim().toLocaleLowerCase() &&
+    a.type === b.type && a.acc === b.acc &&
+    Math.abs(Number(a.amount) - Number(b.amount)) < 0.005 &&
+    Number(a.dueDay) === Number(b.dueDay);
+}
+
+$('#formRecurring').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (recurringSaveInFlight) return;
+  if (!cloudSettingsInitialized) {
+    alert('لا يمكن تأكيد مزامنة الالتزامات بين الأجهزة بعد. افتح الإعدادات على الجهاز الأساسي واضغط «مزامنة إعدادات هذا الجهاز» أولًا.');
+    return;
+  }
+
+  const d = Object.fromEntries(new FormData(e.target));
+  const id = String(d.id || '');
+  const type = d.type === 'دخل' ? 'دخل' : 'مصروف';
+  const amount = Number(d.amount);
+  const feeAmount = Number(d.fee || 0);
+  const dueDay = Number(d.dueDay);
+  const reminderDays = Number(d.reminderDays);
+  const startDate = String(d.startDate || '');
+  if (!String(d.name || '').trim()) { alert('اكتب اسمًا واضحًا للالتزام.'); return; }
+  if (!Number.isFinite(amount) || amount <= 0) { alert('المبلغ يجب أن يكون أكبر من صفر.'); return; }
+  if (!Number.isFinite(feeAmount) || feeAmount < 0) { alert('الرسوم يجب أن تكون صفرًا أو أكبر.'); return; }
+  if (!isValidISODate(startDate)) { alert('اختار تاريخ بداية صحيحًا.'); return; }
+  if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) { alert('يوم الاستحقاق لازم يكون من 1 إلى 31.'); return; }
+  if (!Number.isInteger(reminderDays) || reminderDays < 0 || reminderDays > 30) { alert('اختار فترة تنبيه من 0 إلى 30 يومًا.'); return; }
+  if (!S.accounts.some(account => account.code === d.acc)) { alert('اختار حسابًا موجودًا في النظام.'); return; }
+  if (!['EGP', 'SAR', 'USD'].includes(d.cur)) { alert('العملة المحددة غير مدعومة.'); return; }
+
+  const previousSchedule = id ? recurringScheduleFor(id) : null;
+  const schedule = {
+    id: id || recurringId(),
+    name: String(d.name).trim().slice(0, 100),
+    type,
+    cat: type === 'دخل' ? 'دخل' : String(d.cat || 'الأساسيات'),
+    amount,
+    fee: feeAmount,
+    cur: d.cur,
+    acc: String(d.acc),
+    pay: PAY.includes(d.pay) ? d.pay : 'نقدي',
+    startDate,
+    dueDay,
+    reminderDays,
+    note: String(d.note || '').trim().slice(0, 300),
+    active: previousSchedule ? previousSchedule.active !== false : true,
+    createdAt: previousSchedule ? (previousSchedule.createdAt || new Date().toISOString()) : new Date().toISOString()
+  };
+
+  if (!recurringCategoryList(type).includes(schedule.cat)) {
+    alert('اختار تصنيفًا مناسبًا لنوع الحركة.');
+    return;
+  }
+  const duplicate = (S.recurringSchedules || []).find(item =>
+    String(item.id) !== String(schedule.id) && sameRecurringDefinition(item, schedule)
+  );
+  if (duplicate) {
+    alert('يوجد التزام مسجل بنفس الاسم والحساب والمبلغ ويوم الاستحقاق (' + duplicate.name + '). افتح الالتزام الموجود وعدّله بدل إنشاء نسخة قد تسبب تكرارًا.');
+    return;
+  }
+
+  S.recurringSchedules = id
+    ? (S.recurringSchedules || []).map(item => String(item.id) === id ? schedule : item)
+    : [...(S.recurringSchedules || []), schedule];
+  save();
+
+  recurringSaveInFlight = true;
+  const button = $('#btnSaveRecurring'), oldHtml = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> جارٍ حفظ الالتزام…';
+  try {
+    if (cloudSettingsSyncTimer) {
+      clearTimeout(cloudSettingsSyncTimer);
+      cloudSettingsSyncTimer = null;
+    }
+    const synced = await saveSharedSettingsToGoogle();
+    bootstrap.Modal.getInstance($('#modalRecurring')).hide();
+    render();
+    checkRecurringReminders();
+    showAppToast(
+      synced
+        ? 'تم حفظ الالتزام ومزامنة مواعيده بين أجهزتك.'
+        : 'تم حفظ الالتزام على هذا الجهاز، لكن لم يتم تأكيد رفعه للسحابة. افتح الإعدادات وراجع حالة المزامنة.',
+      7000
+    );
+  } finally {
+    recurringSaveInFlight = false;
+    button.disabled = false;
+    button.innerHTML = oldHtml;
+  }
+});
+
+async function toggleRecurringSchedule(id, currentlyActive) {
+  if (recurringSaveInFlight || recurringGenerationInFlight.size) {
+    showAppToast('هناك عملية التزام قيد التنفيذ. انتظر اكتمالها.', 4000);
+    return;
+  }
+  if (!cloudSettingsInitialized) {
+    alert('افتح الإعدادات على الجهاز الأساسي وأكّد مزامنة الإعدادات قبل تعديل الالتزامات المشتركة.');
+    return;
+  }
+  const schedule = recurringScheduleFor(id);
+  if (!schedule) return;
+  schedule.active = !currentlyActive;
+  save();
+  render();
+  const synced = await saveSharedSettingsToGoogle();
+  showAppToast(synced
+    ? (schedule.active ? 'تم تفعيل الالتزام من جديد.' : 'تم إيقاف الالتزام مؤقتًا.')
+    : 'تم التغيير على هذا الجهاز لكن لم يتم تأكيد مزامنته بين الأجهزة.', 6000);
+}
+
+async function generateRecurringOccurrence(scheduleId, dueDate) {
+  const key = recurringOccurrenceKey(scheduleId, dueDate);
+  if (recurringGenerationInFlight.has(key)) return;
+  if (!googleTransactionsLoaded || !cloudSettingsInitialized) {
+    alert('يلزم اكتمال قراءة معاملات Google Sheets ومزامنة الإعدادات قبل تسجيل استحقاق، حتى نتحقق من عدم تكراره.');
+    return;
+  }
+  const initialSchedule = recurringScheduleFor(scheduleId);
+  if (!initialSchedule || initialSchedule.active === false) {
+    showAppToast('هذا الالتزام متوقف أو غير موجود.', 4000);
+    return;
+  }
+  if (!isValidISODate(dueDate) || dueDate > localISODate()) {
+    showAppToast('لن يتم إنشاء معاملة قبل تاريخ الاستحقاق.', 4000);
+    return;
+  }
+  const [dueYear, dueMonth] = dueDate.split('-').map(Number);
+  if (monthDueDate(dueYear, dueMonth - 1, initialSchedule.dueDay) !== dueDate || dueDate < initialSchedule.startDate) {
+    showAppToast('التاريخ المحدد لا يطابق استحقاق هذا الالتزام.', 4000);
+    return;
+  }
+  if (!confirm(
+    'تأكيد تسجيل الاستحقاق؟\n\n' + initialSchedule.name + '\n' +
+    'التاريخ: ' + dueDate + '\n' +
+    'المبلغ: ' + recurringAmountLabel(initialSchedule) + '\n' +
+    'الحساب: ' + accountDisplayName(initialSchedule.acc) + '\n\n' +
+    'سيتم إنشاء المعاملة مرة واحدة فقط إذا لم يكن لهذا الاستحقاق سجل في Google Sheets.'
+  )) return;
+
+  recurringGenerationInFlight.add(key);
+  try {
+    // Refresh cloud settings and transactions immediately before creating an occurrence.
+    await loadSharedSettingsFromGoogle({ renderAfter: false });
+    await loadDataFromGoogle({ renderAfter: false });
+    if (!googleTransactionsLoaded) throw new Error('تعذرت قراءة Google Sheets للتحقق من الاستحقاق.');
+
+    const schedule = recurringScheduleFor(scheduleId);
+    if (!schedule || schedule.active === false) {
+      render();
+      showAppToast('الالتزام لم يعد نشطًا بعد تحديث البيانات. لم يتم تسجيل شيء.', 5000);
+      return;
+    }
+
+    if (occurrenceAlreadyGenerated(scheduleId, dueDate)) {
+      markOccurrenceGenerated(scheduleId, dueDate);
+      save();
+      const ledgerSynced = await saveSharedSettingsToGoogle();
+      render();
+      showAppToast(
+        ledgerSynced
+          ? 'الاستحقاق مسجل بالفعل في البيانات المشتركة؛ لم يتم إنشاء معاملة مكررة.'
+          : 'الاستحقاق موجود في Google Sheets؛ لم يتم إنشاء نسخة ثانية.',
+        6500
+      );
+      return;
+    }
+
+    const tx = {
+      id: Math.max(0, ...S.tx.map(item => Number(item.id) || 0)) + 1,
+      date: dueDate,
+      name: schedule.name,
+      type: schedule.type,
+      cat: schedule.cat,
+      amt: Number(schedule.amount),
+      fee: Number(schedule.fee || 0),
+      acc: schedule.acc,
+      pay: schedule.pay,
+      code: '',
+      qty: '',
+      price: '',
+      note: schedule.note || '',
+      googleNotes: makeRecurringCloudNote(schedule.id, dueDate, schedule.name, schedule.note || ''),
+      cur: schedule.cur,
+      recurringId: schedule.id,
+      recurringDate: dueDate,
+      recurringNote: schedule.note || ''
+    };
+    const ids = {};
+    S.tx.forEach(item => { ids[item.id] = (ids[item.id] || 0) + 1; });
+    const validation = status(tx, ids);
+    if (validation !== 'سليم') throw new Error('لا يمكن إنشاء المعاملة: ' + validation);
+
+    // Do not mark the occurrence as generated until the transaction write is confirmed.
+    await saveTransactionToGoogle(tx);
+    tx.googleSynced = true;
+    S.tx.push(tx);
+    googleRemoteTransactions.push({
+      date: normalizeGoogleDate(tx.date), type: tx.type, amt: tx.amt, cat: tx.cat,
+      notes: googleNotes(tx)
+    });
+    markOccurrenceGenerated(schedule.id, dueDate, String(tx.id));
+    save();
+
+    const stateSynced = await saveSharedSettingsToGoogle();
+    render();
+    showAppToast(
+      stateSynced
+        ? 'تم تسجيل استحقاق «' + schedule.name + '» وتحديث مِعيار.'
+        : 'تم تسجيل المعاملة في Google Sheets، لكن لم يتم تأكيد مزامنة سجل الالتزامات. المرجع المحفوظ سيمنع تكرارها عند المراجعة.',
+      7000
+    );
+  } catch (error) {
+    console.error('تعذر تسجيل الاستحقاق المتكرر:', error);
+    await loadDataFromGoogle({ renderAfter: false });
+    render();
+    alert('لم أتمكن من تأكيد تسجيل الاستحقاق. لم تعاود الضغط مباشرة؛ حدّث بيانات Google Sheets أولًا، لأن المرجع الفريد سيُستخدم للتحقق مما إذا كان الصف قد وصل بالفعل.' +
+      (error && error.message ? '\nالتفاصيل: ' + String(error.message).slice(0, 250) : ''));
+  } finally {
+    recurringGenerationInFlight.delete(key);
+  }
+}
+
+
 let editingTransfer = null;
 let transferInFlight = false;
 
@@ -1778,6 +2053,19 @@ document.addEventListener('click', e => {
   if (tab) { S.ui.tab = tab.dataset.tab; save(); render(); return; }
   if (e.target.closest('#btnAddTx')) { openTx(); return; }
   if (e.target.closest('#btnAddTransfer')) { openTransfer(); return; }
+  if (e.target.closest('#btnAddRecurring') || e.target.closest('#btnAddRecurringEmpty')) { openRecurringModal(); return; }
+  const editRecurringBtn = e.target.closest('[data-edit-recurring]');
+  if (editRecurringBtn) { openRecurringModal(editRecurringBtn.dataset.editRecurring); return; }
+  const toggleRecurringBtn = e.target.closest('[data-toggle-recurring]');
+  if (toggleRecurringBtn) {
+    toggleRecurringSchedule(toggleRecurringBtn.dataset.toggleRecurring, toggleRecurringBtn.dataset.active === '1');
+    return;
+  }
+  const generateRecurringBtn = e.target.closest('[data-generate-occurrence]');
+  if (generateRecurringBtn) {
+    generateRecurringOccurrence(generateRecurringBtn.dataset.generateOccurrence, generateRecurringBtn.dataset.dueDate);
+    return;
+  }
   if (e.target.closest('#btnSyncSettings')) { saveSharedSettingsToGoogle({ manual: true }); return; }
   if (e.target.closest('#btnReloadCloud')) { loadSharedSettingsFromGoogle().then(() => render()); return; }
   if (e.target.closest('#btnSyncTxDetails')) { syncExistingTransactionDetailsToGoogle(); return; }
@@ -1835,6 +2123,10 @@ document.addEventListener('click', e => {
 
 document.addEventListener('change', e => {
   const x = e.target;
+  if (x.id === 'recType') {
+    populateRecurringCategories(x.value, x.value === 'دخل' ? 'دخل' : 'الأساسيات');
+    return;
+  }
   if (x.id === 'fy') { S.ui.y = +x.value; save(); render(); return; }
   if (x.id === 'fm') { S.ui.m = x.value; save(); render(); return; }
   if (x.dataset.s) { const r = S[x.dataset.s][x.dataset.i]; const k = x.dataset.k; r[k] = x.type === 'checkbox' ? (x.checked ? 1 : 0) : x.type === 'number' ? +x.value : x.value; if (x.dataset.s === 'prices' && k === 'price' && !r.date) r.date = localISODate(); save(); if (x.dataset.s === 'accounts' || x.dataset.s === 'prices') scheduleSharedSettingsSync(); render(); return; }
@@ -1909,6 +2201,7 @@ render();
   await loadSharedSettingsFromGoogle({ renderAfter: false });
   await loadDataFromGoogle({ renderAfter: false });
   render();
+  checkRecurringReminders();
 
   // A one-time, dismissible reminder. Detailed sync status remains in Settings.
   if (!cloudSettingsInitialized) {
@@ -1925,4 +2218,5 @@ setInterval(async () => {
   await loadSharedSettingsFromGoogle({ renderAfter: false });
   await loadDataFromGoogle({ renderAfter: false });
   render();
+  checkRecurringReminders();
 }, SHARED_SYNC_INTERVAL_MS);
