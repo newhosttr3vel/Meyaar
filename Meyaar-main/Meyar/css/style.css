@@ -952,3 +952,104 @@ button, .btn, .form-control, .form-select {
     transition-duration: .01ms !important;
   }
 }
+
+
+/* Temporary cloud-settings reminder toast (15 seconds) */
+.app-toast {
+  position: fixed;
+  z-index: 2000;
+  top: calc(.9rem + env(safe-area-inset-top));
+  left: 50%;
+  width: min(660px, calc(100vw - 1.25rem));
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  padding: .9rem 1rem 1rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--warn) 48%, var(--bd));
+  border-inline-start: 4px solid var(--warn);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--tx);
+  box-shadow: 0 14px 38px rgba(15, 23, 42, .2);
+  direction: rtl;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -12px);
+  pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease, visibility .2s ease;
+}
+.app-toast.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+.app-toast.is-hiding {
+  opacity: 0;
+  transform: translate(-50%, -8px);
+  pointer-events: none;
+}
+.app-toast-icon {
+  flex: 0 0 auto;
+  color: var(--warn);
+  font-size: 1.2rem;
+  margin-top: .1rem;
+}
+.app-toast-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: .9rem;
+  font-weight: 700;
+  line-height: 1.75;
+}
+.app-toast-close {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mut);
+  font: inherit;
+  font-size: 1.45rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.app-toast-close:hover {
+  background: var(--bg);
+  color: var(--tx);
+}
+.app-toast-progress {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--warn);
+  transform-origin: right center;
+  animation-name: app-toast-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@keyframes app-toast-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@media (max-width: 575.98px) {
+  .app-toast {
+    top: calc(.65rem + env(safe-area-inset-top));
+    padding: .8rem .75rem .9rem;
+    gap: .55rem;
+    border-radius: 12px;
+  }
+  .app-toast-text {
+    font-size: .82rem;
+    line-height: 1.65;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-toast, .app-toast-progress {
+    transition: none !important;
+    animation: none !important;
+  }
+}
