@@ -1326,7 +1326,8 @@ function vRecurring() {
   const overdueCount = occurrences.filter(item => item.dueDate < today).length;
   const dueTodayCount = occurrences.filter(item => item.dueDate === today).length;
   const nextMonth = occurrences.filter(item => item.dueDate >= today && item.dueDate <= addCalendarDays(today, 30));
-  const nextMonthTotal = nextMonth.reduce((sum, item) => sum + item.schedule.amount + item.schedule.fee, 0);
+  const nextMonthTotal = nextMonth.reduce((sum, item) =>
+    sum + toEGP(item.schedule.amount + item.schedule.fee, item.schedule.cur, item.dueDate), 0);
   const reminderInfo = cloudSettingsInitialized
     ? '<span class="rec-sync-pill"><i class="bi bi-cloud-check"></i> الالتزامات مشتركة بين أجهزتك</span>'
     : '<span class="rec-sync-pill is-warning"><i class="bi bi-cloud-exclamation"></i> مزامنة الإعدادات تحتاج تأكيدًا</span>';
@@ -1368,7 +1369,6 @@ function vRecurring() {
     '<div class="row g-3 mb-3"><div class="col-6 col-lg-4"><div class="rec-kpi"><span>التزامات نشطة</span><strong>' + active.length + '</strong><small>تتكرر كل شهر</small></div></div><div class="col-6 col-lg-4"><div class="rec-kpi ' + (overdueCount ? 'has-warning' : '') + '"><span>استحقاقات متأخرة</span><strong>' + overdueCount + '</strong><small>' + dueTodayCount + ' مستحق اليوم</small></div></div><div class="col-12 col-lg-4"><div class="rec-kpi"><span>قيمة الالتزامات خلال 30 يومًا</span><strong>' + f(nextMonthTotal) + ' ج.م.</strong><small>تحويل تقديري باستخدام أسعار مِعيار الحالية</small></div></div></div>' +
     '<div class="box rec-agenda-box mb-3"><div class="rec-section-heading"><div><h3><i class="bi bi-calendar-week"></i> تقويم الاستحقاقات القادمة</h3><p>مواعيد اليوم والـ 90 يوم الجايين. التسجيل لا يتم تلقائيًا؛ لازم تراجع كل استحقاق وتؤكد بنفسك.</p></div><span class="rec-count">' + occurrences.length + ' استحقاق</span></div><div class="rec-agenda">' + occurrenceCards + '</div></div>' +
     '<div class="rec-section-heading rec-schedules-heading"><div><h3><i class="bi bi-arrow-repeat"></i> الالتزامات المتكررة</h3><p>تقدر تعدّل الموعد أو توقف الالتزام مؤقتًا من غير حذف معاملاته السابقة.</p></div></div>' +
-    '<div class="row g-3">' + (schedules.length ? schedules.map(schedule => '<div class="col-12 col-lg-6">' + (function(){ const nextCard = schedule; return scheduleCards.includes('<article class="rec-schedule-card"') ? '' : ''; })() + '</div>').join('') : '') + '</div>' +
     '<div class="rec-schedule-grid">' + scheduleCards + '</div>' + inactiveNote +
     '<div class="alert alert-info small mt-3 mb-0"><i class="bi bi-info-circle"></i> التنبيهات بتظهر أثناء فتح مِعيار على الجهاز. لو الموقع مقفول تمامًا، مش هيقدر يرسل إشعارًا في الخلفية. المعاملة بتتسجل فقط بعد تأكيدك، ومعرّف الاستحقاق بيتحفظ في ملاحظات صف Google عشان يمنع إعادة تسجيله عند المراجعة لاحقًا.</div>' +
   '</section>';
