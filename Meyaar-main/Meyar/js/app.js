@@ -1312,6 +1312,68 @@ function vAst(c) {
   <div class="box"><h3><i class="bi bi-currency-exchange"></i> أسعار الأصول</h3><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>الرمز</th><th>الفئة</th><th>السعر الحالي (ج.م)</th><th>تاريخ التحديث</th></tr></thead><tbody>${S.prices.map((p, i) => `<tr><td><code>${esc(p.code)}</code></td><td>${esc(p.cat)}</td><td><input type="number" step="any" class="form-control form-control-sm" data-s="prices" data-i="${i}" data-k="price" value="${+(+p.price).toFixed(4)}" style="max-width:120px"></td><td><input type="date" class="form-control form-control-sm" data-s="prices" data-i="${i}" data-k="date" value="${p.date || ''}" style="max-width:150px"></td></tr>`).join('')}</tbody></table></div><p class="note mt-2 mb-0">الأسعار المبدئية للأسهم = سعر الشراء. حدّثها من السوق.</p></div>`;
 }
 
+
+function recurringAmountLabel(schedule) {
+  return f(schedule.amount) + ' ' + (CURS[schedule.cur] || schedule.cur || 'ج.م.');
+}
+
+function vRecurring() {
+  const schedules = [...(S.recurringSchedules || [])].sort((a, b) => Number(b.active) - Number(a.active) || a.dueDay - b.dueDay || a.name.localeCompare(b.name));
+  const active = schedules.filter(schedule => schedule.active !== false);
+  const inactive = schedules.filter(schedule => schedule.active === false);
+  const occurrences = recurringOccurrences({ daysAhead: 90 });
+  const today = localISODate();
+  const overdueCount = occurrences.filter(item => item.dueDate < today).length;
+  const dueTodayCount = occurrences.filter(item => item.dueDate === today).length;
+  const nextMonth = occurrences.filter(item => item.dueDate >= today && item.dueDate <= addCalendarDays(today, 30));
+  const nextMonthTotal = nextMonth.reduce((sum, item) => sum + item.schedule.amount + item.schedule.fee, 0);
+  const reminderInfo = cloudSettingsInitialized
+    ? '<span class="rec-sync-pill"><i class="bi bi-cloud-check"></i> الالتزامات مشتركة بين أجهزتك</span>'
+    : '<span class="rec-sync-pill is-warning"><i class="bi bi-cloud-exclamation"></i> مزامنة الإعدادات تحتاج تأكيدًا</span>';
+
+  const occurrenceCards = occurrences.length ? occurrences.map(item => {
+    const schedule = item.schedule;
+    const isOverdue = item.dueDate < today;
+    const isToday = item.dueDate === today;
+    const statusLabel = isOverdue ? 'متأخر' : isToday ? 'مستحق اليوم' : 'بعد ' + item.daysUntil + ' يوم';
+    const statusClass = isOverdue ? 'tag-er' : isToday ? 'tag-wn' : 'tag-ok';
+    const action = item.dueDate <= today
+      ? '<button class="btn btn-primary btn-sm" data-generate-occurrence="' + esc(schedule.id) + '" data-due-date="' + esc(item.dueDate) + '"><i class="bi bi-check2-circle"></i> مراجعة وتسجيل</button>'
+      : '<span class="rec-upcoming-state"><i class="bi bi-calendar-event"></i> لم يحن موعد التسجيل</span>';
+    return '<article class="rec-agenda-item ' + (isOverdue ? 'is-overdue' : isToday ? 'is-today' : '') + '">' +
+      '<div class="rec-date-tile"><strong>' + esc(item.dueDate.slice(-2)) + '</strong><span>' + esc(MON[Number(item.dueDate.slice(5, 7)) - 1]) + '</span><small>' + esc(item.dueDate.slice(0, 4)) + '</small></div>' +
+      '<div class="rec-agenda-content"><div class="rec-agenda-top"><strong>' + esc(schedule.name) + '</strong><span class="tag ' + statusClass + '">' + statusLabel + '</span></div>' +
+      '<div class="rec-agenda-meta"><span><i class="bi ' + (schedule.type === 'دخل' ? 'bi-arrow-down-left-circle' : 'bi-arrow-up-right-circle') + '"></i> ' + esc(schedule.type) + ' · ' + esc(schedule.cat) + '</span><span><i class="bi bi-wallet2"></i> ' + esc(accountDisplayName(schedule.acc)) + '</span></div>' +
+      '<div class="rec-agenda-bottom"><strong class="rec-amount ' + (schedule.type === 'دخل' ? 'is-income' : 'is-expense') + '">' + esc(recurringAmountLabel(schedule)) + (schedule.fee ? ' <small>+ رسوم ' + f(schedule.fee) + '</small>' : '') + '</strong>' + action + '</div></div></article>';
+  }).join('') : '<div class="rec-empty"><span><i class="bi bi-calendar2-check"></i></span><strong>مفيش استحقاقات قادمة مسجلة</strong><p>ابدأ بإضافة الإيجار أو المرتب أو الاشتراكات الشهرية، ومِعيار هيرتب لك مواعيدها هنا.</p><button class="btn btn-primary" id="btnAddRecurringEmpty"><i class="bi bi-plus-lg"></i> إضافة أول التزام</button></div>';
+
+  const scheduleCards = schedules.length ? schedules.map(schedule => {
+    const next = recurringOccurrences({ daysAhead: 370 }).find(item => item.scheduleId === schedule.id);
+    const nextText = next ? next.dueDate + (next.dueDate < today ? ' · متأخر' : '') : 'لا يوجد موعد ظاهر خلال الفترة القادمة';
+    const stateClass = schedule.active === false ? 'tag-wn' : 'tag-ok';
+    const stateLabel = schedule.active === false ? 'متوقف' : 'نشط';
+    return '<article class="rec-schedule-card ' + (schedule.active === false ? 'is-inactive' : '') + '">' +
+      '<div class="rec-schedule-head"><div class="rec-schedule-icon"><i class="bi ' + (schedule.type === 'دخل' ? 'bi-cash-coin' : 'bi-receipt') + '"></i></div><div class="rec-schedule-title"><strong>' + esc(schedule.name) + '</strong><span>' + esc(schedule.type) + ' · ' + esc(schedule.cat) + '</span></div><span class="tag ' + stateClass + '">' + stateLabel + '</span></div>' +
+      '<div class="rec-schedule-amount">' + esc(recurringAmountLabel(schedule)) + '<small> شهريًا</small></div>' +
+      '<div class="rec-schedule-details"><span><i class="bi bi-calendar3"></i> يوم ' + schedule.dueDay + ' من كل شهر</span><span><i class="bi bi-bell"></i> التنبيه قبلها بـ ' + schedule.reminderDays + ' يوم</span><span><i class="bi bi-wallet2"></i> ' + esc(accountDisplayName(schedule.acc)) + '</span><span><i class="bi bi-calendar-check"></i> أقرب استحقاق: ' + esc(nextText) + '</span></div>' +
+      '<div class="rec-schedule-actions"><button class="btn btn-sm btn-outline-primary" data-edit-recurring="' + esc(schedule.id) + '"><i class="bi bi-pencil"></i> تعديل</button><button class="btn btn-sm btn-outline-secondary" data-toggle-recurring="' + esc(schedule.id) + '" data-active="' + (schedule.active === false ? '0' : '1') + '"><i class="bi ' + (schedule.active === false ? 'bi-play-circle' : 'bi-pause-circle') + '"></i> ' + (schedule.active === false ? 'تفعيل' : 'إيقاف مؤقت') + '</button></div></article>';
+  }).join('') : '<div class="rec-empty rec-empty-compact"><span><i class="bi bi-calendar2-plus"></i></span><strong>لسه مفيش التزامات متكررة</strong><p>سجل الالتزام مرة واحدة بدل ما تعيد إدخاله كل شهر.</p></div>';
+
+  const inactiveNote = inactive.length
+    ? '<p class="note mb-0 mt-3">يوجد ' + inactive.length + ' التزام/التزامات متوقفة؛ لن تظهر في التقويم أو ترسل تنبيهات حتى تعيد تفعيلها.</p>'
+    : '';
+
+  return '<section class="recurring-page">' +
+    '<div class="recurring-hero mb-3"><div class="recurring-hero-copy"><span class="rec-eyebrow"><i class="bi bi-calendar2-week"></i> التنظيم المالي الشهري</span><h2>التزاماتك تحت السيطرة</h2><p>سجل الإيجار والمرتب والفواتير مرة واحدة. هتشوف المواعيد القادمة، وتراجع كل استحقاق قبل إضافته للمعاملات.</p><div class="mt-2">' + reminderInfo + '</div></div><button class="btn btn-light rec-primary-action" id="btnAddRecurring"><i class="bi bi-plus-lg"></i> التزام جديد</button></div>' +
+    '<div class="row g-3 mb-3"><div class="col-6 col-lg-4"><div class="rec-kpi"><span>التزامات نشطة</span><strong>' + active.length + '</strong><small>تتكرر كل شهر</small></div></div><div class="col-6 col-lg-4"><div class="rec-kpi ' + (overdueCount ? 'has-warning' : '') + '"><span>استحقاقات متأخرة</span><strong>' + overdueCount + '</strong><small>' + dueTodayCount + ' مستحق اليوم</small></div></div><div class="col-12 col-lg-4"><div class="rec-kpi"><span>قيمة الالتزامات خلال 30 يومًا</span><strong>' + f(nextMonthTotal) + ' ج.م.</strong><small>تحويل تقديري باستخدام أسعار مِعيار الحالية</small></div></div></div>' +
+    '<div class="box rec-agenda-box mb-3"><div class="rec-section-heading"><div><h3><i class="bi bi-calendar-week"></i> تقويم الاستحقاقات القادمة</h3><p>مواعيد اليوم والـ 90 يوم الجايين. التسجيل لا يتم تلقائيًا؛ لازم تراجع كل استحقاق وتؤكد بنفسك.</p></div><span class="rec-count">' + occurrences.length + ' استحقاق</span></div><div class="rec-agenda">' + occurrenceCards + '</div></div>' +
+    '<div class="rec-section-heading rec-schedules-heading"><div><h3><i class="bi bi-arrow-repeat"></i> الالتزامات المتكررة</h3><p>تقدر تعدّل الموعد أو توقف الالتزام مؤقتًا من غير حذف معاملاته السابقة.</p></div></div>' +
+    '<div class="row g-3">' + (schedules.length ? schedules.map(schedule => '<div class="col-12 col-lg-6">' + (function(){ const nextCard = schedule; return scheduleCards.includes('<article class="rec-schedule-card"') ? '' : ''; })() + '</div>').join('') : '') + '</div>' +
+    '<div class="rec-schedule-grid">' + scheduleCards + '</div>' + inactiveNote +
+    '<div class="alert alert-info small mt-3 mb-0"><i class="bi bi-info-circle"></i> التنبيهات بتظهر أثناء فتح مِعيار على الجهاز. لو الموقع مقفول تمامًا، مش هيقدر يرسل إشعارًا في الخلفية. المعاملة بتتسجل فقط بعد تأكيدك، ومعرّف الاستحقاق بيتحفظ في ملاحظات صف Google عشان يمنع إعادة تسجيله عند المراجعة لاحقًا.</div>' +
+  '</section>';
+}
+
 function vSet() {
   const t = CATS.reduce((s, c) => s + (+S.budget[c] || 0), 0);
   const rateHistory = [...(S.rateHistory || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
