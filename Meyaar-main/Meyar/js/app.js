@@ -871,11 +871,18 @@ function vDash(c) {
   const ys = []; for (let y = 2024; y <= 2035; y++) ys.push(y);
   const comp = [ ['استثمارات', c.invVal, COL[2]], ['ذهب', c.gold.val, COL[1]], ['سيولة', c.liq, COL[0]], ['ادخار وطوارئ', c.sav, COL[4]] ];
   const pendingCount = pendingTransactions().length;
-  const cloudBanner = !googleTransactionsLoaded
-    ? '<div class="alert alert-warning small">لم تكتمل قراءة المعاملات من Google Sheets؛ الأرقام المعروضة قد تكون من ذاكرة هذا الجهاز.</div>'
-    : (pendingCount
-      ? '<div class="alert alert-warning small">تم توحيد الحسابات على بيانات Google Sheets. يوجد ' + pendingCount + ' معاملة محلية معلقة لا تدخل في الأرقام المشتركة حتى تراجعها وترفعها من الإعدادات.</div>'
-      : '');
+  const cloudWarnings = [];
+  if (!googleTransactionsLoaded) {
+    cloudWarnings.push('لم تكتمل قراءة المعاملات من Google Sheets؛ الأرقام المعروضة قد تكون من ذاكرة هذا الجهاز.');
+  } else if (pendingCount) {
+    cloudWarnings.push('تم توحيد الحسابات على بيانات Google Sheets. يوجد ' + pendingCount + ' معاملة محلية معلقة لا تدخل في الأرقام المشتركة حتى تراجعها وترفعها من الإعدادات.');
+  }
+  if (!cloudSettingsInitialized) {
+    cloudWarnings.push('إعدادات الحسابات وأسعار الصرف والميزانية لم يتم تأكيد مزامنتها بعد. افتح الإعدادات، ثم ارفعها من الجهاز الأساسي.');
+  }
+  const cloudBanner = cloudWarnings.length
+    ? '<div class="alert alert-warning small">' + cloudWarnings.join('<br>') + '</div>'
+    : '';
   return `
   ${cloudBanner}
   <div class="filter-bar">
