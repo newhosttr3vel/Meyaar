@@ -23,6 +23,9 @@ globalThis.__financeTest = {
   transferPairIssues,
   monthDueDate,
   recurringOccurrenceKey,
+  goalProgress,
+  goalMonthsRemaining,
+  goalMonthlyRequired,
   makeRecurringCloudNote,
   parseRecurringCloudNote,
   recurringOccurrences,
@@ -123,16 +126,16 @@ assert.match(html, /id="txFxPreview"/, 'The transaction FX preview is visible to
 assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal opener exists');
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
-assert.match(html, /style\.css\?v=20261028-recurring1/, 'Updated CSS cache version is active');
-assert.match(html, /app\.js\?v=20261028-recurring1/, 'Updated JS cache version is active');
+assert.match(html, /style\.css\?v=20261028-goals1/, 'Updated CSS cache version is active');
+assert.match(html, /app\.js\?v=20261028-goals1/, 'Updated JS cache version is active');
 assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
 assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
 assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists');
 for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory', 'recAccount', 'recStartDate', 'recDueDay', 'recReminderDays']) {
   assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
 }
-assert.match(html, /style\.css\?v=20261028-recurring1/, 'Recurring CSS cache version is active');
-assert.match(html, /app\.js\?v=20261028-recurring1/, 'Recurring JS cache version is active');
+assert.match(html, /style\.css\?v=20261028-goals1/, 'Recurring CSS cache version is active');
+assert.match(html, /app\.js\?v=20261028-goals1/, 'Recurring JS cache version is active');
 assert.match(css, /\.recurring-hero/, 'The recurring page has its own visual treatment');
 assert.match(css, /#modalRecurring[\s\S]*?overflow-y:auto/, 'The recurring modal has a mobile scroll layout');
 assert.match(source, /function checkRecurringReminders\(\)/, 'Recurring reminders are checked while the site is open');
@@ -182,4 +185,34 @@ assert.equal(api.occurrenceAlreadyGenerated(recurringId, '2026-02-28'), true,
   'A sheet transaction marker prevents a second generation of the same occurrence');
 
 
-console.log('Meyaar financial-core tests passed: dated FX, transfers, recurring dates, occurrence idempotency, and UI wiring.');
+
+// Financial goals: completion ratio, monthly plan, deadline handling, and state normalization.
+assert.equal(api.goalProgress({ target: 60000, current: 15000 }), 25, 'Goal progress is calculated from current and target balances');
+assert.equal(api.goalProgress({ target: 0, current: 10 }), 0, 'A zero target cannot create an invalid progress ratio');
+assert.equal(api.goalMonthsRemaining('2027-10-28', '2026-10-28'), 12, 'A one-year goal has twelve saving months');
+assert.equal(api.goalMonthlyRequired({ target: 60000, current: 0, deadline: '2027-10-28' }, '2026-10-28'), 5000,
+  'A 60000 target over twelve months requires 5000 per month before returns');
+assert.equal(api.goalMonthlyRequired({ target: 60000, current: 10000, deadline: '2027-10-28' }, '2026-10-28'), 4166.67,
+  'Existing goal balance is subtracted before calculating the monthly plan');
+assert.equal(api.goalMonthlyRequired({ target: 60000, current: 60000, deadline: '2027-10-28' }, '2026-10-28'), 0,
+  'A completed goal does not ask for additional monthly savings');
+assert.equal(api.goalMonthlyRequired({ target: 60000, current: 10000, deadline: '2026-10-01' }, '2026-10-28'), 50000,
+  'For an overdue goal the remaining balance is surfaced as an immediate catch-up amount');
+
+const validGoal = {
+  id: 'GOAL-TEST-1', name: 'صندوق الطوارئ', category: 'احتياطي الطوارئ',
+  target: 60000, current: 5000, cur: 'EGP', deadline: '2027-10-28',
+  note: '', active: true, createdAt: '2026-10-28T00:00:00.000Z', history: []
+};
+api.setState(makeState({ financialGoals: [validGoal], pendingFinancialGoalIds: ['GOAL-TEST-1'] }));
+assert.equal(api.getState().financialGoals.length, 1, 'A valid financial goal survives shared state normalization');
+assert.equal(api.getState().pendingFinancialGoalIds[0], 'GOAL-TEST-1', 'Pending goal changes are retained until cloud sync');
+assert.ok(html.includes('data-tab="goal"') && html.includes('id="formGoal"') && html.includes('id="formGoalContribution"'),
+  'Goals navigation and both goal forms exist');
+assert.match(source, /function vFinancialGoals\(\)/, 'The financial goals screen is wired');
+assert.match(source, /S\.financialGoals = S\.financialGoals\.map\(item => item\.id === goal\.id \? updated : item\)/,
+  'Goal contributions update the selected goal, not all goals');
+assert.match(css, /\.goal-card/, 'Goal cards have dedicated responsive styling');
+
+
+console.log('Meyaar financial-core tests passed: dated FX, transfers, recurring dates, goal plans, occurrence idempotency, and UI wiring.');
