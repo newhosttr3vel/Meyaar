@@ -11,7 +11,7 @@ const CURS = { EGP: 'ج.م', SAR: 'ر.س', USD: '$' };
 
 const API_URL = "https://script.google.com/macros/s/AKfycbwJI2_IFB0ukOs1Ufko0wuLob2eAEIFLaPwsglNAeWnMdCUB_7euqWGV4xGzVBH1SflzQ/exec";
 
-// Google Sheets is the source of truth for transactions. Keep local data if the request fails.
+// Google Sheets currently contains only a partial transaction schema. Preserve richer local records during sync.
 function googleNotes(tx) {
   if (!tx) return '';
   return String(tx.googleNotes !== undefined ? tx.googleNotes : ((tx.note || tx.name) || '')).trim();
@@ -26,7 +26,7 @@ function localISODate(date = new Date()) {
 
 function isValidISODate(value) {
   const raw = String(value || '');
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(raw)) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return false;
   const date = new Date(raw + 'T00:00:00');
   return Number.isFinite(date.getTime()) && localISODate(date) === raw;
 }
@@ -34,7 +34,7 @@ function isValidISODate(value) {
 function normalizeGoogleDate(value) {
   if (!value) return '';
   const raw = String(value).trim();
-  const iso = raw.match(/^\\d{4}-\\d{2}-\\d{2}/);
+  const iso = raw.match(/^\d{4}-\d{2}-\d{2}/);
   if (iso) return iso[0];
   const d = new Date(raw);
   return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
