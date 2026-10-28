@@ -9,9 +9,15 @@
   "theme_color": "#102b38",
   "icons": [
     {
-      "src": "assets/meyaar-touch.png",
+      "src": "assets/meyaar-touch.png?v=20261028-brand1",
       "sizes": "180x180",
       "type": "image/png"
+    },
+    {
+      "src": "assets/meyaar-app-512.png?v=20261028-brand1",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }
