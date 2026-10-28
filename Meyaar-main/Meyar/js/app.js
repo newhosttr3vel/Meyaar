@@ -1423,7 +1423,9 @@ function openTx(t) {
   const form = $('#formTx');
   form.date.value = t.date; form.elements.namedItem('name').value = t.name || ''; form.amt.value = t.amt ?? ''; form.fee.value = t.fee || 0; form.code.value = t.code || defaultAssetCode(t.type); form.qty.value = t.qty ?? ''; form.price.value = t.price ?? ''; form.note.value = t.note || ''; form.cur.value = t.cur || 'EGP';
   const typeSelect = form.elements.namedItem('type');
-  typeSelect.innerHTML = TYPES.map(type => '<option value="' + esc(type) + '">' + esc(type) + '</option>').join('');
+  // New transfers must use the paired workflow; retain these types only for legacy rows being edited.
+  const selectableTypes = isNew ? TYPES.filter(type => type !== 'تحويل' && type !== 'تسوية') : TYPES;
+  typeSelect.innerHTML = selectableTypes.map(type => '<option value="' + esc(type) + '">' + esc(type) + '</option>').join('');
   if (LEGACY_ASSET_TYPES.includes(t.type)) {
     typeSelect.insertAdjacentHTML('beforeend', '<option value="' + esc(t.type) + '">' + esc(t.type) + ' (معاملة قديمة)</option>');
   }
