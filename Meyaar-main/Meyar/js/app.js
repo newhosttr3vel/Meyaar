@@ -127,8 +127,15 @@ async function postGooglePayload(payload) {
   if (!response.ok) throw new Error(`Google Sheets HTTP ${response.status}`);
   const raw = await response.text();
   let result;
-  try { result = JSON.parse(raw); } catch (_) { throw new Error('استجابة Google Sheets غير مفهومة'); }
-  if (result.status === 'error' || result.success === false) throw new Error(result.message || 'رفض Google Sheets العملية');
+  try {
+    result = JSON.parse(raw);
+  } catch (_) {
+    const preview = String(raw || '').replace(/\s+/g, ' ').slice(0, 180);
+    throw new Error('استجابة Google Sheets ليست JSON صالحة' + (preview ? ': ' + preview : ''));
+  }
+  if (result && (result.status === 'error' || result.success === false)) {
+    throw new Error(result.message || result.error || 'رفض Google Sheets العملية');
+  }
   return result;
 }
 
@@ -144,9 +151,16 @@ async function saveTransactionToGoogle(tx) {
 }
 
 async function deleteTransactionFromGoogle(tx) {
-  const result = await postGooglePayload({ action: 'delete', Date: tx.date, Notes: googleNotes(tx) });
-  if (result.found === false || result.deleted === false || result.success === false || result.status === 'error') {
-    throw new Error(result.message || 'لم يتم العثور على المعاملة في Google Sheets');
+  const notes = googleNotes(tx);
+  // Send the full row identity. Older Apps Script deployments may ignore extra fields,
+  // while updated deployments can use Amount/Type/Category to avoid deleting the wrong same-date row.
+  const result = await postGooglePayload({
+    action: 'delete',
+    Date: tx.date, Type: tx.type, Amount: Number(tx.amt), Category: tx.cat, Notes: notes,
+    date: tx.date, type: tx.type, amount: Number(tx.amt), category: tx.cat, notes
+  });
+  if (result && (result.found === false || result.deleted === false || result.success === false || result.status === 'error')) {
+    throw new Error(result.message || result.error || 'خدمة Google لم تؤكد حذف الصف. قد يكون التاريخ أو الملاحظات غير مطابقين للصف، أو قد لا تدعم الخدمة الحذف بالحقول الحالية.');
   }
   return result;
 }
@@ -619,7 +633,8 @@ document.addEventListener('click', e => {
           save(); render();
         }).catch(err => {
           console.error('فشل حذف المعاملة من Google Sheets:', err);
-          alert('لم يتم تأكيد الحذف من Google Sheets، لذلك احتفظت بالمعاملة محليًا.');
+          const detail = err && err.message ? '\\nالتفاصيل: ' + String(err.message).slice(0, 350) : '';
+          alert('لم يتم تأكيد الحذف من Google Sheets، لذلك احتفظت بالمعاملة محليًا.' + detail);
         });
       }
     }
