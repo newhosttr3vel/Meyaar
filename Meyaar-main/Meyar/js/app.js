@@ -156,9 +156,10 @@ function markOccurrenceGenerated(scheduleId, dueDate, txId = '') {
   }
 }
 
-function recurringOccurrences({ fromDate = localISODate(), daysAhead = 90 } = {}) {
-  const today = localISODate();
-  const endDate = addCalendarDays(fromDate, daysAhead);
+function recurringOccurrences({ fromDate = localISODate(), daysAhead = 90, todayDate = localISODate() } = {}) {
+  const today = isValidISODate(todayDate) ? todayDate : localISODate();
+  const safeFromDate = isValidISODate(fromDate) ? fromDate : today;
+  const endDate = addCalendarDays(safeFromDate, daysAhead);
   const rows = [];
 
   (S.recurringSchedules || []).filter(schedule => schedule.active !== false).forEach(schedule => {
@@ -198,7 +199,8 @@ function checkRecurringReminders() {
   const alerts = occurrences.filter(item => {
     const schedule = item.schedule;
     return !seen.has(item.key) &&
-      (item.daysUntil < 0 || item.daysUntil <= Math.max(0, Number(schedule.reminderDays) || 0)) &&
+      ((item.daysUntil < 0 && item.daysUntil >= -7) ||
+        (item.daysUntil >= 0 && item.daysUntil <= Math.max(0, Number(schedule.reminderDays) || 0))) &&
       item.dueDate <= addCalendarDays(today, Math.max(0, Number(schedule.reminderDays) || 0));
   });
   if (!alerts.length) return;
@@ -502,6 +504,7 @@ async function loadDataFromGoogle({ renderAfter = true } = {}) {
     });
     save();
   } catch (error) {
+    googleTransactionsLoaded = false;
     console.error('تعذر تحميل المعاملات من Google Sheets:', error);
   } finally {
     if (renderAfter && typeof render === 'function') render();
@@ -811,7 +814,7 @@ function normalizeState(input) {
     })
     .map(item => {
       const type = item.type === 'دخل' ? 'دخل' : 'مصروف';
-      const allowedCats = type === 'دخل' ? ['دخل'] : [...CATS, 'رسوم وضرائب', 'أخرى'];
+      const allowedCats = type === 'دخل' ? ['دخل'] : [...CATS.filter(cat => cat !== 'الاستثمارات'), 'رسوم وضرائب', 'أخرى'];
       const amount = Number(item.amount);
       const feeAmount = Number(item.fee || 0);
       const startDate = normalizeGoogleDate(item.startDate);
@@ -1349,7 +1352,7 @@ function vRecurring() {
   }).join('') : '<div class="rec-empty"><span><i class="bi bi-calendar2-check"></i></span><strong>مفيش استحقاقات قادمة مسجلة</strong><p>ابدأ بإضافة الإيجار أو المرتب أو الاشتراكات الشهرية، ومِعيار هيرتب لك مواعيدها هنا.</p><button class="btn btn-primary" id="btnAddRecurringEmpty"><i class="bi bi-plus-lg"></i> إضافة أول التزام</button></div>';
 
   const scheduleCards = schedules.length ? schedules.map(schedule => {
-    const next = recurringOccurrences({ daysAhead: 370 }).find(item => item.scheduleId === schedule.id);
+    const next = occurrences.find(item => item.scheduleId === schedule.id) || null;
     const nextText = next ? next.dueDate + (next.dueDate < today ? ' · متأخر' : '') : 'لا يوجد موعد ظاهر خلال الفترة القادمة';
     const stateClass = schedule.active === false ? 'tag-wn' : 'tag-ok';
     const stateLabel = schedule.active === false ? 'متوقف' : 'نشط';
@@ -1971,6 +1974,15 @@ $('#formTx').addEventListener('submit', async e => {
   let notesForGoogle = String(d.note || d.name || '').trim();
   if (wasEditing && !noteChanged && !nameChanged) notesForGoogle = previousGoogleNotes || notesForGoogle;
   else if (wasEditing && !noteChanged && nameChanged) notesForGoogle = String(d.name || d.note || '').trim();
+  if (wasEditing && (oldTx.recurringId || oldTx.recurringDate || parseRecurringCloudNote(previousGoogleNotes))) {
+    const recurringMeta = parseRecurringCloudNote(previousGoogleNotes);
+    const recurringDate = oldTx.recurringDate || (recurringMeta && recurringMeta.date) || oldTx.date;
+    const recurringRef = oldTx.recurringId || (recurringMeta && recurringMeta.id);
+    notesForGoogle = makeRecurringCloudNote(
+      recurringRef, recurringDate, String(d.name || oldTx.name || 'التزام دوري'),
+      String(d.note !== undefined ? d.note : ((recurringMeta && recurringMeta.note) || oldTx.note || ''))
+    );
+  }
   const assetCode = String(d.code || defaultAssetCode(d.type) || '').trim();
   Object.assign(t, { date: d.date, name: d.name, type: d.type, cat: d.cat, amt: +d.amt, fee: +d.fee || 0, acc: d.acc, pay: d.pay, code: assetCode, qty: d.qty === '' ? '' : +d.qty, price: d.price === '' ? '' : +d.price, note: d.note || '', googleNotes: notesForGoogle, cur: d.cur || 'EGP', sub: t.sub || '' });
   const ids = {};
