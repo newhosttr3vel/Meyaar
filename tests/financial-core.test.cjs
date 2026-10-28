@@ -267,7 +267,7 @@ api.setState(makeState({
 const shortSafety = api.safeToSpendSnapshot('2026-10-28');
 assert.equal(shortSafety.safe, -6000, 'The indicator can go negative when commitments and goal reserves exceed liquid funds');
 assert.equal(shortSafety.shortfall, 6000, 'The forecast exposes the amount of the expected cash shortfall');
-assert.ok(html.includes('safe-spend-panel') && html.includes('safe-spend-assumptions'),
+assert.ok(source.includes('safe-spend-panel') && source.includes('safe-spend-assumptions'),
   'Dashboard includes the indicator and an expandable assumptions note');
 assert.match(source, /function safeToSpendSnapshot\(/, 'The safe-to-spend calculation is implemented in the financial core');
 assert.match(source, /التزاماتك وحجوزاتك تتجاوز السيولة الحالية/, 'The dashboard warns when the projected cash is insufficient');
