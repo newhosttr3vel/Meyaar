@@ -468,22 +468,84 @@ const Q = t => {
 
 const priceOf = c => +((S.prices.find(p => p.code === c) || {}).price) || 0;
 
-function hold(v, c) {
-  let bq = 0, sq = 0, cost = 0, proc = 0, sf = 0;
-  v.filter(t => t.code === c && Number(t.qty) > 0).forEach(t => {
-    if (isAssetPurchase(t.type)) {
-      bq += Number(t.qty);
+function summarizeAssetRows(rows, code) {
+  let bq = 0, sq = 0, cost = 0, proc = 0, sf = 0, untrackedValue = 0;
+  rows.forEach(t => {
+    const qty = Number(t.qty);
+    const hasQty = Number.isFinite(qty) && qty > 0;
+
+    if (hasQty && isAssetPurchase(t.type)) {
+      bq += qty;
       cost += toEGP(Number(t.amt) + fee(t), t.cur);
-    } else if (isAssetSale(t.type)) {
-      sq += Number(t.qty);
-      proc += toEGP(t.amt, t.cur);
+    } else if (hasQty && isAssetSale(t.type)) {
+      sq += qty;
+      proc += toEGP(Number(t.amt), t.cur);
       sf += toEGP(fee(t), t.cur);
+    } else if (isAssetPurchase(t.type)) {
+      untrackedValue += toEGP(Number(t.amt) + fee(t), t.cur);
+    } else if (isAssetSale(t.type)) {
+      untrackedValue -= toEGP(Math.max(0, Number(t.amt) - fee(t)), t.cur);
     }
   });
-  const avg = bq ? cost / bq : 0;
+
+  const avg = bq > 0 ? cost / bq : 0;
   const rem = bq - sq;
-  const pr = priceOf(c);
-  return { code: c, bq, sq, rem, cost, avg, pr, val: rem * pr, rc: rem * avg, un: rem * pr - rem * avg, re: proc - sq * avg - sf };
+  const marketPrice = priceOf(code);
+  const trackedValue = rem * (marketPrice > 0 ? marketPrice : avg);
+  const value = Math.max(0, trackedValue + untrackedValue);
+  return {
+    code, bq, sq, rem, cost, avg, pr: marketPrice || avg,
+    val: value, rc: rem * avg,
+    un: marketPrice > 0 ? rem * marketPrice - rem * avg : 0,
+    re: proc - sq * avg - sf,
+    usesCostFallback: marketPrice <= 0 || untrackedValue !== 0
+  };
+}
+
+function hold(v, c) {
+  const rows = v.filter(t =>
+    t.code === c &&
+    !GOLD_TYPES.has(t.type) &&
+    isAssetTransaction(t.type)
+  );
+  return summarizeAssetRows(rows, c);
+}
+
+function holdGold(v) {
+  const rows = v.filter(t =>
+    GOLD_TYPES.has(t.type) ||
+    (LEGACY_ASSET_TYPES.includes(t.type) && t.code === GOLD)
+  );
+  const codes = [...new Set(rows
+    .filter(t => String(t.code || '').trim() && Number(t.qty) > 0)
+    .map(t => String(t.code).trim()))];
+
+  const grouped = codes.map(code =>
+    summarizeAssetRows(rows.filter(t => String(t.code || '').trim() === code), code)
+  );
+
+  // Rows with no code or no code/quantity group can't be priced as units; keep their recorded cost.
+  const fallbackRows = rows.filter(t => !String(t.code || '').trim() ||
+    !codes.includes(String(t.code || '').trim()));
+  const fallbackValue = fallbackRows.reduce((total, t) => {
+    if (isAssetPurchase(t.type)) return total + toEGP(Number(t.amt) + fee(t), t.cur);
+    if (isAssetSale(t.type)) return total - toEGP(Math.max(0, Number(t.amt) - fee(t)), t.cur);
+    return total;
+  }, 0);
+
+  return {
+    code: GOLD,
+    bq: grouped.reduce((n, item) => n + item.bq, 0),
+    sq: grouped.reduce((n, item) => n + item.sq, 0),
+    rem: grouped.reduce((n, item) => n + item.rem, 0),
+    cost: grouped.reduce((n, item) => n + item.cost, 0) + Math.max(fallbackValue, 0),
+    avg: 0, pr: 0,
+    val: Math.max(0, grouped.reduce((n, item) => n + item.val, 0) + fallbackValue),
+    rc: grouped.reduce((n, item) => n + item.rc, 0),
+    un: grouped.reduce((n, item) => n + item.un, 0),
+    re: grouped.reduce((n, item) => n + item.re, 0),
+    usesCostFallback: grouped.some(item => item.usesCostFallback) || fallbackRows.length > 0
+  };
 }
 
 function calc() {
@@ -515,11 +577,20 @@ function calc() {
   }));
   const liq = sum(bal.filter(a => a.liq), a => a.bal);
 
-  const codes = [...new Set(v.filter(t => t.code && t.code !== GOLD).map(t => t.code))];
   const vt = v.filter(t => t.date <= to);
+  const codes = [...new Set(vt.filter(t =>
+    t.code && t.code !== GOLD && !GOLD_TYPES.has(t.type) && isAssetTransaction(t.type)
+  ).map(t => t.code))];
   const inv = codes.map(c => hold(vt, c));
-  const gold = hold(vt, GOLD);
-  const invVal = sum(inv, h => h.val);
+
+  // Stock purchases/sales without an asset code are still part of wealth at conservative book cost.
+  const unclassifiedStockValue = sum(vt.filter(t =>
+    (t.type === 'شراء أسهم' || t.type === 'بيع أسهم') && !String(t.code || '').trim()
+  ), t => isAssetPurchase(t.type)
+    ? toEGP(Number(t.amt) + fee(t), t.cur)
+    : -toEGP(Math.max(0, Number(t.amt) - fee(t)), t.cur));
+  const gold = holdGold(vt);
+  const invVal = Math.max(0, sum(inv, h => h.val) + unclassifiedStockValue);
   const sav = sum(v.filter(t => (t.cat === 'الادخار' || t.cat === 'الطوارئ') && t.date <= to), Q);
 
   const bud = CATS.map(c => {
@@ -638,10 +709,11 @@ function vDash(c) {
     <span class="note">${c.from} ← ${c.to}</span>
   </div>
   <div class="hero-card mb-3">
-    <small class="opacity-75">إجمالي الثروة</small>
+    <small class="opacity-75">إجمالي الثروة <span class="badge bg-light text-dark">تقديري عند غياب سعر السوق</span></small>
     <div class="hero-value">${f(c.wealth)} <small style="font-size:0.4em;font-weight:600">جنيه</small></div>
     <div class="comp-bar">${comp.map(x => `<i style="width:${c.wealth ? Math.max(x[1], 0) / c.wealth * 100 : 0}%;background:${x[2]}"></i>`).join('')}</div>
     <div class="d-flex flex-wrap gap-3">${comp.map(x => `<span class="leg-item"><span class="leg-dot" style="background:${x[2]}"></span>${x[0]} ${f(x[1])}</span>`).join('')}</div>
+    <p class="note mt-2 mb-0">الأصول التي لا تتوفر لها كمية أو سعر سوق تظهر بالتكلفة المسجلة كتقدير، وليست تقييمًا سوقيًا حيًا.</p>
   </div>
   <div class="row g-3 mb-3">
     ${[ ['الدخل', c.inc], ['المصروفات', c.exp], ['الرصيد (دخل − مصروف)', c.inc - c.exp], ['معدل الادخار', null, pc(c.sr)], ['الصدقات', c.char], ['قيمة الذهب', c.gold.val], ['قيمة الاستثمار', c.invVal] ].map(([l, v, x]) => `<div class="col-6 col-md-4 col-lg"><div class="kpi-card"><div class="kpi-label">${l}</div><div class="kpi-value">${x || f(v)}</div></div></div>`).join('')}
