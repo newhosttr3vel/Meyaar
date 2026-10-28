@@ -1178,6 +1178,220 @@ function render() {
   if (icon) icon.className = document.documentElement.getAttribute('data-theme') === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
 }
 let editingTx = null;
+
+let editingTransfer = null;
+let transferInFlight = false;
+
+function accountBalanceAt(code, date) {
+  const account = S.accounts.find(item => item.code === code);
+  if (!account) return 0;
+  const ids = {};
+  S.tx.forEach(tx => { ids[tx.id] = (ids[tx.id] || 0) + 1; });
+  return Number(account.open || 0) + S.tx
+    .filter(tx => tx.acc === code && tx.date <= date && status(tx, ids) === 'سليم')
+    .reduce((sum, tx) => sum + P(tx), 0);
+}
+
+function getTransferPair(tx) {
+  const meta = transferMetadata(tx);
+  if (!meta) return null;
+  const rows = S.tx.filter(item => {
+    const itemMeta = transferMetadata(item);
+    return itemMeta && itemMeta.id === meta.id;
+  });
+  return { meta, rows,
+    outgoing: rows.find(item => item.type === 'تحويل') || null,
+    incoming: rows.find(item => item.type === 'تسوية') || null };
+}
+
+function updateTxFxPreview() {
+  const form = $('#formTx'), preview = $('#txFxPreview');
+  if (!form || !preview) return;
+  const date = form.elements.namedItem('date').value || localISODate();
+  const cur = form.elements.namedItem('cur').value || 'EGP';
+  const amount = Number(form.elements.namedItem('amt').value);
+  const rate = rateForDate(cur, date);
+  const summary = cur === 'EGP'
+    ? 'الجنيه المصري هو العملة الأساسية للنظام.'
+    : 'سعر ' + cur + ' في ' + date + ': 1 ' + cur + ' = ' + f(rate) + ' ج.م.';
+  const value = Number.isFinite(amount) && amount > 0
+    ? '<div class="mt-1"><strong>قيمة المعاملة بالجنيه:</strong> ' + f(amount * rate) + ' ج.م.</div>' : '';
+  const baseline = cur !== 'EGP' && !(S.rateHistory || []).some(item => item.cur === cur && item.date <= date);
+  preview.innerHTML = '<div>' + esc(summary) + '</div>' + value +
+    (baseline ? '<div class="note mt-1">لا يوجد سجل تاريخي قبل هذا التاريخ؛ يُستخدم سعر الأساس المحفوظ.</div>' : '');
+}
+
+function updateTransferPreview() {
+  const form = $('#formTransfer'), preview = $('#transferFxPreview');
+  if (!form || !preview) return;
+  const date = form.elements.namedItem('date').value || localISODate();
+  const fromCode = form.elements.namedItem('from').value, toCode = form.elements.namedItem('to').value;
+  const cur = form.elements.namedItem('cur').value || 'EGP';
+  const amount = Number(form.elements.namedItem('amount').value);
+  const feeAmount = Number(form.elements.namedItem('fee').value) || 0;
+  const rate = rateForDate(cur, date);
+  const sent = Math.max(0, Number.isFinite(amount) ? amount : 0);
+  const fromBal = accountBalanceAt(fromCode, date), toBal = accountBalanceAt(toCode, date);
+  const debit = (sent + feeAmount) * rate, credit = sent * rate;
+  const shortfall = sent > 0 && fromBal + 0.005 < debit;
+  preview.innerHTML =
+    '<div><strong>من ' + esc(accountDisplayName(fromCode)) + ' إلى ' + esc(accountDisplayName(toCode)) + '</strong></div>' +
+    '<div class="transfer-preview-grid mt-2"><div><span>سيُخصم من المصدر</span><strong>' + f(sent + feeAmount) + ' ' + esc(cur) + '</strong><small>' + f(debit) + ' ج.م.</small></div>' +
+    '<div><span>سيضاف للمستلم</span><strong>' + f(sent) + ' ' + esc(cur) + '</strong><small>' + f(credit) + ' ج.م.</small></div></div>' +
+    '<div class="note mt-2">الرصيد المتوقع للمصدر: ' + f(fromBal - debit) + ' ج.م. · رصيد المستلم المتوقع: ' + f(toBal + credit) + ' ج.م.</div>' +
+    (shortfall ? '<div class="transfer-preview-warning mt-2"><i class="bi bi-exclamation-triangle"></i> مبلغ التحويل والرسوم أكبر من رصيد المصدر في التاريخ المحدد.</div>' : '') +
+    '<div class="note mt-1">الطرفان بنفس العملة؛ الرسوم تخصم من المصدر فقط.</div>';
+}
+
+function openTransfer(tx = null) {
+  if (S.accounts.length < 2) { alert('أضف حسابًا ثانيًا أولًا حتى تتمكن من التحويل بين الحسابات.'); return; }
+  editingTransfer = null;
+  if (tx) {
+    const pair = getTransferPair(tx);
+    if (!pair || !pair.outgoing || !pair.incoming || pair.rows.length !== 2) {
+      alert('هذا التحويل غير مكتمل الطرفين. احذف الطرف الموجود من زر الحذف ثم سجّل التحويل من جديد حتى لا تتغير الأرصدة بالخطأ.');
+      return;
+    }
+    editingTransfer = pair;
+  }
+  const form = $('#formTransfer');
+  form.reset();
+  const fromSelect = form.elements.namedItem('from'), toSelect = form.elements.namedItem('to');
+  const options = S.accounts.map(account => '<option value="' + esc(account.code) + '">' + esc(account.name) + ' (' + esc(account.code) + ')</option>').join('');
+  fromSelect.innerHTML = options; toSelect.innerHTML = options;
+  const out = editingTransfer ? editingTransfer.outgoing : null;
+  const inc = editingTransfer ? editingTransfer.incoming : null;
+  form.elements.namedItem('date').value = out ? out.date : localISODate();
+  fromSelect.value = out ? out.acc : S.accounts[0].code;
+  toSelect.value = inc ? inc.acc : S.accounts.find(account => account.code !== fromSelect.value).code;
+  form.elements.namedItem('amount').value = out ? out.amt : '';
+  form.elements.namedItem('cur').value = out ? (out.cur || 'EGP') : 'EGP';
+  form.elements.namedItem('fee').value = out ? (out.fee || 0) : 0;
+  fillSelect(form.elements.namedItem('pay'), PAY, out ? out.pay : 'نقدي');
+  form.elements.namedItem('note').value = editingTransfer ? editingTransfer.meta.note : '';
+  $('#modalTransferTitle').textContent = editingTransfer ? 'تعديل التحويل بين الحسابات' : 'تحويل بين الحسابات';
+  $('#btnSaveTransfer').innerHTML = editingTransfer ? '<i class="bi bi-check-lg"></i> حفظ تعديل التحويل' : '<i class="bi bi-arrow-left-right"></i> تنفيذ التحويل';
+  updateTransferPreview();
+  new bootstrap.Modal($('#modalTransfer')).show();
+}
+
+async function deleteLinkedTransfer(tx) {
+  const meta = transferMetadata(tx);
+  if (!meta) return;
+  const pair = S.tx.filter(item => { const m = transferMetadata(item); return m && m.id === meta.id; });
+  if (!pair.length) return;
+  const complete = pair.length === 2 && pair.some(item => item.type === 'تحويل') && pair.some(item => item.type === 'تسوية');
+  if (!confirm(complete
+    ? 'حذف التحويل بالكامل؟ سيتم حذف حركتي الخصم والإضافة، وليس طرفًا واحدًا فقط.'
+    : 'التحويل غير مكتمل. سيتم حذف الطرف المتبقي المرتبط به حتى لا يظل رصيد غير متوازن. متابعة؟')) return;
+  const deleted = [];
+  try {
+    for (const item of pair) { await deleteTransactionFromGoogle(item); deleted.push(item); }
+    S.tx = S.tx.filter(item => { const m = transferMetadata(item); return !m || m.id !== meta.id; });
+    save(); render(); showAppToast('تم حذف التحويل المرتبط بطرفيه.', 5000);
+  } catch (error) {
+    const restoreErrors = [];
+    for (const item of deleted) {
+      try { await saveTransactionToGoogle(item); } catch (restoreError) { restoreErrors.push(restoreError); }
+    }
+    await loadDataFromGoogle({ renderAfter: false }); render();
+    alert('لم يكتمل حذف التحويل. حاول النظام استرجاع أي طرف حُذف بالفعل.' +
+      (restoreErrors.length ? ' تعذر تأكيد الاسترجاع الكامل؛ راجع التدقيق وGoogle Sheets.' : '') +
+      (error && error.message ? '\nالتفاصيل: ' + String(error.message).slice(0, 220) : ''));
+  }
+}
+
+$('#formTransfer').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (transferInFlight) return;
+  if (!googleTransactionsLoaded) {
+    alert('لا أستطيع تأكيد قراءة Google Sheets الآن. أعد تحميل الصفحة وانتظر اكتمال المزامنة قبل تسجيل التحويل.');
+    return;
+  }
+  const d = Object.fromEntries(new FormData(e.target));
+  const date = String(d.date || ''), fromCode = String(d.from || ''), toCode = String(d.to || '');
+  const amount = Number(d.amount), feeAmount = Number(d.fee || 0), cur = String(d.cur || 'EGP');
+  const note = String(d.note || '').trim();
+  if (!isValidISODate(date)) { alert('اختار تاريخًا صحيحًا للتحويل.'); return; }
+  if (!fromCode || !toCode || !S.accounts.some(a => a.code === fromCode) || !S.accounts.some(a => a.code === toCode)) { alert('اختار حساب المصدر والحساب المستلم.'); return; }
+  if (fromCode === toCode) { alert('حساب المصدر لازم يختلف عن حساب الاستلام.'); return; }
+  if (!Number.isFinite(amount) || amount <= 0) { alert('اكتب مبلغ تحويل أكبر من صفر.'); return; }
+  if (!Number.isFinite(feeAmount) || feeAmount < 0) { alert('الرسوم لازم تكون صفرًا أو أكبر.'); return; }
+
+  const transferId = editingTransfer ? editingTransfer.meta.id : 'TRF-' + date.replace(/-/g, '') + '-' + Date.now().toString(36).toUpperCase();
+  const oldOut = editingTransfer ? editingTransfer.outgoing : null, oldIn = editingTransfer ? editingTransfer.incoming : null;
+  const outId = oldOut ? oldOut.id : Math.max(0, ...S.tx.map(item => Number(item.id) || 0)) + 1;
+  const inId = oldIn ? oldIn.id : Math.max(outId, ...S.tx.map(item => Number(item.id) || 0)) + 1;
+  const cloudNote = makeTransferCloudNote(transferId, fromCode, toCode, note);
+  const meta = { id: transferId, from: fromCode, to: toCode, note };
+  const outgoing = { id: outId, date, name: transferDisplayName('تحويل', meta), type: 'تحويل', cat: 'تحويل داخلي',
+    amt: amount, fee: feeAmount, pay: d.pay || 'نقدي', acc: fromCode, code: '', qty: '', price: '', note,
+    googleNotes: cloudNote, cur, transferId, transferFrom: fromCode, transferTo: toCode, transferNote: note };
+  const incoming = { id: inId, date, name: transferDisplayName('تسوية', meta), type: 'تسوية', cat: 'تحويل داخلي',
+    amt: amount, fee: 0, pay: d.pay || 'نقدي', acc: toCode, code: '', qty: '', price: '', note,
+    googleNotes: cloudNote, cur, transferId, transferFrom: fromCode, transferTo: toCode, transferNote: note };
+
+  const oldIds = new Set([oldOut, oldIn].filter(Boolean).map(item => String(item.id)));
+  const ids = {};
+  S.tx.filter(item => !oldIds.has(String(item.id))).forEach(item => { ids[item.id] = (ids[item.id] || 0) + 1; });
+  if (!editingTransfer && ((ids[outgoing.id] || 0) || (ids[incoming.id] || 0))) {
+    alert('تعذر إنشاء رقمين فريدين للتحويل. حدّث الصفحة وحاول مرة أخرى.'); return;
+  }
+  const outStatus = status(outgoing, ids), inStatus = status(incoming, ids);
+  if (outStatus !== 'سليم' || inStatus !== 'سليم') { alert('تعذر إنشاء التحويل: ' + (outStatus !== 'سليم' ? outStatus : inStatus)); return; }
+  const debit = toEGP(amount + feeAmount, cur, date), sourceBalance = accountBalanceAt(fromCode, date);
+  if (sourceBalance + 0.005 < debit && !confirm('رصيد حساب المصدر في التاريخ المحدد أقل من مبلغ التحويل والرسوم. هل تريد تسجيل الرصيد السالب؟')) return;
+
+  transferInFlight = true;
+  const submit = $('#btnSaveTransfer'), oldButtonHtml = submit.innerHTML;
+  submit.disabled = true;
+  submit.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> جارٍ حفظ التحويل…';
+  const deletedOld = [], savedNew = [];
+  try {
+    if (editingTransfer) {
+      await deleteTransactionFromGoogle(oldOut); deletedOld.push(oldOut);
+      await deleteTransactionFromGoogle(oldIn); deletedOld.push(oldIn);
+    }
+    await saveTransactionToGoogle(outgoing); savedNew.push(outgoing);
+    await saveTransactionToGoogle(incoming); savedNew.push(incoming);
+
+    const stale = editingTransfer ? [oldOut, oldIn] : [];
+    googleRemoteTransactions = googleRemoteTransactions.filter(remote =>
+      !stale.some(old => sameRemoteCore(old, remote) && googleNotes(old) === String(remote.notes || '').trim())
+    );
+    S.tx = S.tx.filter(item => {
+      const m = transferMetadata(item);
+      return !oldIds.has(String(item.id)) && (!m || m.id !== transferId);
+    });
+    outgoing.googleSynced = true; incoming.googleSynced = true;
+    S.tx.push(outgoing, incoming);
+    googleRemoteTransactions.push(
+      { date: normalizeGoogleDate(outgoing.date), type: outgoing.type, amt: outgoing.amt, cat: outgoing.cat, notes: cloudNote },
+      { date: normalizeGoogleDate(incoming.date), type: incoming.type, amt: incoming.amt, cat: incoming.cat, notes: cloudNote }
+    );
+    save();
+    bootstrap.Modal.getInstance($('#modalTransfer')).hide();
+    editingTransfer = null; render();
+    showAppToast('تم تسجيل طرفي التحويل وتحديث أرصدة الحسابين.', 5000);
+  } catch (error) {
+    const rollbackErrors = [];
+    for (const item of savedNew.slice().reverse()) {
+      try { await deleteTransactionFromGoogle(item); } catch (rollbackError) { rollbackErrors.push(rollbackError); }
+    }
+    for (const item of deletedOld) {
+      try { await saveTransactionToGoogle(item); } catch (restoreError) { rollbackErrors.push(restoreError); }
+    }
+    await loadDataFromGoogle({ renderAfter: false }); render();
+    alert('لم يكتمل التحويل بالكامل. حاول النظام التراجع عن الخطوات السابقة، ثم أعاد قراءة بيانات Google Sheets.' +
+      (rollbackErrors.length ? '\nتعذر تأكيد استرجاع كل الخطوات؛ راجع صفحة التدقيق وGoogle Sheets قبل إعادة المحاولة.' : '') +
+      (error && error.message ? '\nالتفاصيل: ' + String(error.message).slice(0, 220) : ''));
+  } finally {
+    transferInFlight = false;
+    submit.disabled = false;
+    submit.innerHTML = editingTransfer ? '<i class="bi bi-check-lg"></i> حفظ تعديل التحويل' : oldButtonHtml;
+  }
+});
+
 function openTx(t) {
   editingTx = t || null;
   const isNew = !t;
@@ -1192,6 +1406,7 @@ function openTx(t) {
   }
   typeSelect.value = t.type;
   fillSelect($('#txCat'), ALLC, t.cat); fillSelect($('#txAcc'), S.accounts.map(a => a.code), t.acc); fillSelect($('#txPay'), PAY, t.pay);
+  updateTxFxPreview();
   new bootstrap.Modal($('#modalTx')).show();
 }
 
@@ -1274,25 +1489,30 @@ document.addEventListener('click', e => {
   if (e.target.closest('#btnAddAcc')) { $('#formAcc').reset(); new bootstrap.Modal($('#modalAcc')).show(); return; }
   if (e.target.closest('#btnAddPrice')) { $('#formPrice').reset(); $('#formPrice').date.value = localISODate(); new bootstrap.Modal($('#modalPrice')).show(); return; }
   const editBtn = e.target.closest('[data-edit]');
-  if (editBtn) { openTx(S.tx.find(t => t.id == editBtn.dataset.edit)); return; }
-  
-  // Delete in Google first; only remove locally after Google confirms the operation.
+  if (editBtn) {
+    const selectedTx = S.tx.find(t => String(t.id) === String(editBtn.dataset.edit));
+    if (selectedTx && transferMetadata(selectedTx)) openTransfer(selectedTx);
+    else if (selectedTx) openTx(selectedTx);
+    return;
+  }
+
+  // A paired transfer is deleted as a unit to keep source and destination balances aligned.
   const delBtn = e.target.closest('[data-del]');
   if (delBtn) {
-    if (confirm('حذف المعاملة رقم ' + delBtn.dataset.del + '؟')) {
-      const txToDelete = S.tx.find(t => String(t.id) === String(delBtn.dataset.del));
-      if (txToDelete) {
-        // Let Google Apps Script match Date + Type + Amount + Category + Notes.
-        // The backend deletes only an exact single match and refuses ambiguous requests.
-        deleteTransactionFromGoogle(txToDelete).then(() => {
-          S.tx = S.tx.filter(t => String(t.id) !== String(delBtn.dataset.del));
-          save(); render();
-        }).catch(err => {
-          console.error('فشل حذف المعاملة من Google Sheets:', err);
-          const detail = err && err.message ? '\nالتفاصيل: ' + String(err.message).slice(0, 350) : '';
-          alert('لم يتم تأكيد الحذف من Google Sheets، لذلك احتفظت بالمعاملة محليًا.' + detail);
-        });
-      }
+    const txToDelete = S.tx.find(t => String(t.id) === String(delBtn.dataset.del));
+    if (txToDelete && transferMetadata(txToDelete)) {
+      deleteLinkedTransfer(txToDelete);
+      return;
+    }
+    if (txToDelete && confirm('حذف المعاملة رقم ' + delBtn.dataset.del + '؟')) {
+      deleteTransactionFromGoogle(txToDelete).then(() => {
+        S.tx = S.tx.filter(t => String(t.id) !== String(delBtn.dataset.del));
+        save(); render();
+      }).catch(err => {
+        console.error('فشل حذف المعاملة من Google Sheets:', err);
+        const detail = err && err.message ? '\nالتفاصيل: ' + String(err.message).slice(0, 350) : '';
+        alert('لم يتم تأكيد الحذف من Google Sheets، لذلك احتفظت بالمعاملة محليًا.' + detail);
+      });
     }
     return;
   }
@@ -1361,6 +1581,8 @@ document.addEventListener('change', e => {
     };
     r.readAsText(x.files[0]);
   }
+  if (x.closest('#formTx')) updateTxFxPreview();
+  if (x.closest('#formTransfer')) updateTransferPreview();
 });
 
 document.addEventListener('input', e => {
@@ -1371,6 +1593,8 @@ document.addEventListener('input', e => {
     const q = $('#q');
     if (q) { q.focus(); q.setSelectionRange(p, p); }
   }
+  if (e.target.closest('#formTx')) updateTxFxPreview();
+  if (e.target.closest('#formTransfer')) updateTransferPreview();
 });
 
 if (S.ui.theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
