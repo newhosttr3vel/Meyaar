@@ -123,10 +123,11 @@ async function loadDataFromGoogle({ renderAfter = true } = {}) {
       }
 
       const remoteDetails = {
-        acc: hasFullSchema ? String(row[5] || 'CASH') : '',
-        pay: hasFullSchema ? String(row[6] || 'نقدي') : '',
-        cur: hasFullSchema ? String(row[7] || 'EGP') : '',
-        fee: hasFullSchema ? numericCell(row[8], 0) : '',
+        // Blank cells in legacy rows must not erase richer details held on the primary device.
+        acc: hasFullSchema ? String(row[5] || '') : '',
+        pay: hasFullSchema ? String(row[6] || '') : '',
+        cur: hasFullSchema ? String(row[7] || '') : '',
+        fee: hasFullSchema ? numericCell(row[8], '') : '',
         code: hasFullSchema ? String(row[9] || '') : '',
         qty: hasFullSchema ? numericCell(row[10], '') : '',
         price: hasFullSchema ? numericCell(row[11], '') : ''
@@ -325,6 +326,69 @@ async function saveTransactionToGoogle(tx) {
   }
   tx.googleSynced = true;
   return result;
+}
+
+async function syncTransactionDetailsToGoogle(tx) {
+  const notes = googleNotes(tx) || tx.name || '';
+  const payload = {
+    action: 'syncdetails',
+    Date: tx.date, Type: tx.type, Amount: Number(tx.amt), Category: tx.cat, Notes: notes,
+    Account: tx.acc || 'CASH', Payment: tx.pay || 'نقدي', Currency: tx.cur || 'EGP',
+    Fee: fee(tx), AssetCode: tx.code || '',
+    Quantity: tx.qty === '' || tx.qty === null || tx.qty === undefined ? '' : Number(tx.qty),
+    Price: tx.price === '' || tx.price === null || tx.price === undefined ? '' : Number(tx.price)
+  };
+  const result = await postGooglePayload(payload);
+  if (!result || result.success === false || result.status === 'error') {
+    throw new Error(result && (result.message || result.error) || 'تعذر مزامنة تفاصيل المعاملة');
+  }
+  return result;
+}
+
+async function syncExistingTransactionDetailsToGoogle() {
+  const candidates = S.tx.filter(tx => tx.googleSynced);
+  if (!candidates.length) {
+    alert('لم يتم تحميل معاملات من Google Sheets بعد. أعد تحميل الصفحة ثم حاول مرة أخرى.');
+    return;
+  }
+
+  const confirmed = confirm(
+    'سيتم تحديث تفاصيل المعاملات الموجودة بالفعل في Google Sheets من بيانات هذا الجهاز، ' +
+    'بما في ذلك الحساب والعملة والرسوم ورمز الأصل والكمية والسعر. لن تتم إضافة صفوف جديدة.\\n\\n' +
+    'نفّذ هذه الخطوة من الكمبيوتر الذي يحتوي على التفاصيل الصحيحة. هل تريد المتابعة؟'
+  );
+  if (!confirmed) return;
+
+  let updated = 0;
+  const failures = [];
+  for (const tx of candidates) {
+    try {
+      await syncTransactionDetailsToGoogle(tx);
+      updated++;
+    } catch (error) {
+      failures.push({
+        id: tx.id,
+        name: tx.name || tx.note || 'بدون اسم',
+        message: error && error.message ? error.message : String(error)
+      });
+    }
+  }
+
+  const skippedLocal = S.tx.length - candidates.length;
+  const summary = [
+    'انتهت مزامنة التفاصيل.',
+    'تم تحديث: ' + updated,
+    'تعذر تحديث: ' + failures.length,
+    'معاملات محلية غير موجودة/غير مؤكدة في Google وتم تخطيها: ' + skippedLocal
+  ];
+  if (failures.length) {
+    summary.push('', 'أول الأخطاء:');
+    failures.slice(0, 5).forEach(item =>
+      summary.push('#' + item.id + ' — ' + item.name + ': ' + item.message)
+    );
+  }
+  alert(summary.join('\\n'));
+  await loadDataFromGoogle();
 }
 
 async function deleteTransactionFromGoogle(tx) {
@@ -759,7 +823,7 @@ function vSet() {
   return `
   <div class="row g-3"><div class="col-lg-6"><div class="box"><h3><i class="bi bi-sliders"></i> نسب الميزانية</h3><table class="table mb-0">${CATS.map(c => `<tr><td>${c}</td><td style="width:120px"><div class="input-group input-group-sm"><input type="number" class="form-control" data-b="${c}" min="0" max="100" step="1" value="${Math.round(S.budget[c] * 100)}"><span class="input-group-text">%</span></div></td></tr>`).join('')}<tr><th>المجموع</th><th style="color:var(--${Math.abs(t - 1) < 0.001 ? 'ok' : 'red'})">${pc(t)}</th></tr><tr><td>حد التحذير</td><td><div class="input-group input-group-sm"><input type="number" class="form-control" data-w="1" min="1" max="100" value="${Math.round(S.warn * 100)}"><span class="input-group-text">%</span></div></td></tr></table></div></div>
   <div class="col-lg-6"><div class="box"><h3><i class="bi bi-currency-exchange"></i> أسعار الصرف (إلى الجنيه)</h3><table class="table mb-0"><tr><td>ريال سعودي (SAR)</td><td style="width:140px"><input type="number" step="any" class="form-control form-control-sm" data-r="SAR" value="${S.rates.SAR}"></td></tr><tr><td>دولار أمريكي (USD)</td><td><input type="number" step="any" class="form-control form-control-sm" data-r="USD" value="${S.rates.USD}"></td></tr><tr><td>جنيه مصري (EGP)</td><td><input type="number" class="form-control form-control-sm" value="1" disabled></td></tr></table><p class="note mt-2 mb-0">كل المعاملات تُحوَّل إلى الجنيه حسب هذه الأسعار عند الحساب.</p></div></div>
-  <div class="col-12"><div class="box"><h3><i class="bi bi-cloud-arrow-up"></i> مزامنة الأجهزة</h3><p class="note">المعاملات تُقرأ وتُحفظ في DB_TRANSACTIONS، أما الحسابات وأسعار الأصول وأسعار الصرف ونسب الميزانية فتحتاج حفظًا مشتركًا في Google Sheets حتى تظهر على كل الأجهزة. أول مرة، اضغط الزر من الجهاز الذي يحتوي على إعداداتك الصحيحة؛ وبعدها ستُحمّل الإعدادات تلقائيًا على بقية الأجهزة.</p><p class="small mb-2" id="cloudSyncStatus">${esc(cloudSettingsStatus)}</p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnSyncSettings"><i class="bi bi-cloud-check"></i> مزامنة إعدادات هذا الجهاز</button><button class="btn btn-outline-secondary btn-sm" id="btnReloadCloud"><i class="bi bi-arrow-repeat"></i> تحميل الإعدادات من السحابة</button></div></div></div>
+  <div class="col-12"><div class="box"><h3><i class="bi bi-cloud-arrow-up"></i> مزامنة الأجهزة</h3><p class="note">المعاملات تُقرأ وتُحفظ في DB_TRANSACTIONS، أما الحسابات وأسعار الأصول وأسعار الصرف ونسب الميزانية فتحتاج حفظًا مشتركًا في Google Sheets حتى تظهر على كل الأجهزة. أول مرة، اضغط الزر من الجهاز الذي يحتوي على إعداداتك الصحيحة؛ وبعدها ستُحمّل الإعدادات تلقائيًا على بقية الأجهزة.</p><p class="small mb-2" id="cloudSyncStatus">${esc(cloudSettingsStatus)}</p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnSyncSettings"><i class="bi bi-cloud-check"></i> مزامنة إعدادات هذا الجهاز</button><button class="btn btn-outline-secondary btn-sm" id="btnReloadCloud"><i class="bi bi-arrow-repeat"></i> تحميل الإعدادات من السحابة</button><button class="btn btn-outline-primary btn-sm" id="btnSyncTxDetails"><i class="bi bi-arrow-left-right"></i> ترحيل تفاصيل المعاملات القديمة</button></div><p class="note mt-2 mb-0">شغّل ترحيل التفاصيل مرة واحدة من الكمبيوتر الأساسي بعد تحديث Apps Script. سيتم تحديث الصفوف المطابقة فقط، وأي صف مكرر أو غير مطابق سيتم تخطيه بأمان.</p></div></div>
   <div class="col-12"><div class="box"><h3><i class="bi bi-database"></i> النسخ الاحتياطي</h3><p class="note">تقدر تصدّر نسخة JSON أو CSV، وتستخدمها لاسترجاع البيانات عند الحاجة.</p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnExp"><i class="bi bi-download"></i> تصدير JSON</button><button class="btn btn-outline-primary btn-sm" id="btnCsv"><i class="bi bi-filetype-csv"></i> تصدير CSV</button><button class="btn btn-outline-secondary btn-sm" id="btnImp"><i class="bi bi-upload"></i> استيراد</button><button class="btn btn-outline-danger btn-sm" id="btnReset"><i class="bi bi-arrow-counterclockwise"></i> استرجاع التجريبي</button></div></div></div>`;
 }
 
@@ -890,6 +954,7 @@ document.addEventListener('click', e => {
   if (e.target.closest('#btnAddTx')) { openTx(); return; }
   if (e.target.closest('#btnSyncSettings')) { saveSharedSettingsToGoogle({ manual: true }); return; }
   if (e.target.closest('#btnReloadCloud')) { loadSharedSettingsFromGoogle().then(() => render()); return; }
+  if (e.target.closest('#btnSyncTxDetails')) { syncExistingTransactionDetailsToGoogle(); return; }
   if (e.target.closest('#btnAddAcc')) { $('#formAcc').reset(); new bootstrap.Modal($('#modalAcc')).show(); return; }
   if (e.target.closest('#btnAddPrice')) { $('#formPrice').reset(); $('#formPrice').date.value = localISODate(); new bootstrap.Modal($('#modalPrice')).show(); return; }
   const editBtn = e.target.closest('[data-edit]');
