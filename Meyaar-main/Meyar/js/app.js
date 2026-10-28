@@ -1601,14 +1601,19 @@ async function toggleRecurringSchedule(id, currentlyActive) {
   }
   const schedule = recurringScheduleFor(id);
   if (!schedule) return;
-  schedule.active = !currentlyActive;
-  S.pendingRecurringScheduleIds = [...new Set([...(S.pendingRecurringScheduleIds || []), String(schedule.id)])];
-  save();
-  render();
-  const synced = await saveSharedSettingsToGoogle();
-  showAppToast(synced
-    ? (schedule.active ? 'تم تفعيل الالتزام من جديد.' : 'تم إيقاف الالتزام مؤقتًا.')
-    : 'تم التغيير على هذا الجهاز لكن لم يتم تأكيد مزامنته بين الأجهزة.', 6000);
+  recurringSaveInFlight = true;
+  try {
+    schedule.active = !currentlyActive;
+    S.pendingRecurringScheduleIds = [...new Set([...(S.pendingRecurringScheduleIds || []), String(schedule.id)])];
+    save();
+    render();
+    const synced = await saveSharedSettingsToGoogle();
+    showAppToast(synced
+      ? (schedule.active ? 'تم تفعيل الالتزام من جديد.' : 'تم إيقاف الالتزام مؤقتًا.')
+      : 'تم التغيير على هذا الجهاز لكن لم يتم تأكيد مزامنته بين الأجهزة.', 6000);
+  } finally {
+    recurringSaveInFlight = false;
+  }
 }
 
 async function generateRecurringOccurrence(scheduleId, dueDate) {
@@ -1632,15 +1637,18 @@ async function generateRecurringOccurrence(scheduleId, dueDate) {
     showAppToast('التاريخ المحدد لا يطابق استحقاق هذا الالتزام.', 4000);
     return;
   }
+  recurringGenerationInFlight.add(key);
   if (!confirm(
     'تأكيد تسجيل الاستحقاق؟\n\n' + initialSchedule.name + '\n' +
     'التاريخ: ' + dueDate + '\n' +
     'المبلغ: ' + recurringAmountLabel(initialSchedule) + '\n' +
     'الحساب: ' + accountDisplayName(initialSchedule.acc) + '\n\n' +
     'سيتم إنشاء المعاملة مرة واحدة فقط إذا لم يكن لهذا الاستحقاق سجل في Google Sheets.'
-  )) return;
+  )) {
+    recurringGenerationInFlight.delete(key);
+    return;
+  }
 
-  recurringGenerationInFlight.add(key);
   try {
     // Refresh cloud settings and transactions immediately before creating an occurrence.
     await loadSharedSettingsFromGoogle({ renderAfter: false });
