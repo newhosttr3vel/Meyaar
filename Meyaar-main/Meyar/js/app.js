@@ -130,7 +130,7 @@ async function postGooglePayload(payload) {
   try {
     result = JSON.parse(raw);
   } catch (_) {
-    const preview = String(raw || '').replace(/\\s+/g, ' ').slice(0, 180);
+    const preview = String(raw || '').replace(/\s+/g, ' ').slice(0, 180);
     throw new Error('استجابة Google Sheets ليست JSON صالحة' + (preview ? ': ' + preview : ''));
   }
   if (result && (result.status === 'error' || result.success === false)) {
