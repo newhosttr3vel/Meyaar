@@ -96,15 +96,15 @@
                 <select class="form-select" name="pay" id="txPay"></select>
               </div>
               <div class="col-md-4">
-                <label class="form-label">رمز الأصل</label>
-                <input type="text" class="form-control" name="code" placeholder="مثال: GOLD">
+                <label class="form-label">رمز الأصل <span class="text-muted">(اختياري)</span></label>
+                <input type="text" class="form-control" name="code" placeholder="مثال للسهم: COMI — الذهب يُحدد تلقائيًا">
               </div>
               <div class="col-md-4">
-                <label class="form-label">الكمية</label>
+                <label class="form-label">عدد الوحدات <span class="text-muted">(اختياري)</span></label>
                 <input type="number" class="form-control" name="qty" step="any" min="0">
               </div>
               <div class="col-md-4">
-                <label class="form-label">سعر الوحدة</label>
+                <label class="form-label">سعر الوحدة <span class="text-muted">(اختياري)</span></label>
                 <input type="number" class="form-control" name="price" step="any" min="0">
               </div>
               <div class="col-12">
@@ -114,6 +114,8 @@
             </div>
             <div class="alert alert-info mt-3 mb-0 small">
               <i class="bi bi-info-circle"></i> المبالغ تُحوَّل تلقائياً إلى الجنيه حسب أسعار الصرف في الإعدادات.
+              تفاصيل الأصل (الرمز والكمية وسعر الوحدة) اختيارية؛ اتركها فارغة لو عاوز تسجل قيمة الشراء أو البيع فقط.
+              عند عدم إدخال الكمية، لن تدخل المعاملة في حساب الكميات والأرباح الخاصة بالمحفظة.
             </div>
           </div>
           <div class="modal-footer">
