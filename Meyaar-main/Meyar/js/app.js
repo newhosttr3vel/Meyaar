@@ -25,6 +25,8 @@ let cloudSettingsStatus = 'لم يتم تحميل إعدادات المزامن�
 let cloudSettingsLastUpdated = '';
 let cloudSettingsSyncTimer = null;
 let cloudSettingsSyncInFlight = false;
+let googleTransactionsLoaded = false;
+let googleRemoteTransactions = [];
 
 // The Notes column is the shared display text because the sheet has no separate Name column.
 function googleNotes(tx) {
@@ -72,9 +74,92 @@ function normalizeGoogleDate(value) {
 }
 
 function sameRemoteCore(tx, remote) {
-  return String(tx.date || '') === remote.date && String(tx.type || '') === remote.type &&
-    String(tx.cat || '') === remote.cat && Number.isFinite(Number(tx.amt)) &&
-    Math.abs(Number(tx.amt) - remote.amt) < 0.005;
+  return normalizeGoogleDate(tx.date) === normalizeGoogleDate(remote.date) &&
+    String(tx.type || '').trim() === String(remote.type || '').trim() &&
+    String(tx.cat || '').trim() === String(remote.cat || '').trim() &&
+    Number.isFinite(Number(tx.amt)) &&
+    Math.abs(Number(tx.amt) - Number(remote.amt)) < 0.005;
+}
+
+function pendingTransactionKey(tx) {
+  return [
+    String(tx.id ?? ''),
+    normalizeGoogleDate(tx.date),
+    String(tx.type || ''),
+    String(Number(tx.amt) || 0),
+    String(tx.cat || ''),
+    googleNotes(tx)
+  ].join('|');
+}
+
+function pendingTransactions() {
+  return Array.isArray(S.pendingLocalTx) ? S.pendingLocalTx : [];
+}
+
+async function syncPendingTransactionsToGoogle() {
+  if (!googleTransactionsLoaded) {
+    alert('لا توجد قراءة مؤكدة من Google Sheets حتى الآن. أعد تحميل الصفحة ثم حاول مرة أخرى.');
+    return;
+  }
+
+  const pending = pendingTransactions();
+  if (!pending.length) {
+    alert('لا توجد معاملات محلية معلقة خارج Google Sheets.');
+    return;
+  }
+
+  const safeToUpload = pending.filter(tx =>
+    !googleRemoteTransactions.some(remote => sameRemoteCore(tx, remote))
+  );
+  const ambiguous = pending.length - safeToUpload.length;
+
+  const confirmed = confirm(
+    'يوجد ' + pending.length + ' معاملة محلية لا تظهر في بيانات Google الحالية.\\n' +
+    'سيتم رفع ' + safeToUpload.length + ' معاملة فقط إذا لم يوجد صف سحابي له نفس التاريخ والنوع والمبلغ والتصنيف.\\n' +
+    'سيتم ترك ' + ambiguous + ' معاملة للمراجعة بدل إنشاء تكرار محتمل.\\n\\n' +
+    'تأكد أنك على الجهاز الذي يحتوي على البيانات الصحيحة. متابعة؟'
+  );
+  if (!confirmed) return;
+
+  let uploaded = 0;
+  const failures = [];
+
+  for (const tx of safeToUpload) {
+    try {
+      await saveTransactionToGoogle(tx);
+      tx.googleSynced = true;
+      S.tx.push(tx);
+      S.pendingLocalTx = pendingTransactions().filter(
+        item => pendingTransactionKey(item) !== pendingTransactionKey(tx)
+      );
+      googleRemoteTransactions.push({
+        date: normalizeGoogleDate(tx.date),
+        type: tx.type,
+        amt: Number(tx.amt),
+        cat: tx.cat,
+        notes: googleNotes(tx)
+      });
+      save();
+      uploaded++;
+    } catch (error) {
+      failures.push(
+        (tx.name || tx.note || ('معاملة #' + tx.id)) + ': ' +
+        (error && error.message ? error.message : String(error))
+      );
+    }
+  }
+
+  await loadDataFromGoogle({ renderAfter: false });
+  render();
+
+  const lines = [
+    'انتهت محاولة توحيد المعاملات.',
+    'تم رفع: ' + uploaded,
+    'تحتاج مراجعة لأن لها معاملة مشابهة في Google: ' + ambiguous,
+    'فشل رفع: ' + failures.length
+  ];
+  if (failures.length) lines.push('', 'الأخطاء:', ...failures.slice(0, 5));
+  alert(lines.join('\\n'));
 }
 
 // Google currently stores only Date, Type, Amount, Category and Notes.
@@ -178,10 +263,29 @@ async function loadDataFromGoogle({ renderAfter = true } = {}) {
 
     // Retain never-synced local transactions for safety. Previously synced rows missing from
     // Google are removed locally so deletions propagate to other devices.
+    googleRemoteTransactions = rows
+      .map(row => ({
+        date: normalizeGoogleDate(row[0]),
+        type: String(row[1] || 'مصروف').trim(),
+        amt: Number(row[2]),
+        cat: String(row[3] || 'أخرى').trim(),
+        notes: String(row[4] || '').trim()
+      }))
+      .filter(row => isValidISODate(row.date) && Number.isFinite(row.amt) && row.amt > 0);
+    googleTransactionsLoaded = true;
+
+    // Make Google Sheets the canonical dataset for calculations on every device.
+    // Keep unsynced local-only rows separately for explicit, duplicate-safe reconciliation.
     const localOnly = localPool
       .filter(item => !item.used && !item.tx.googleSynced)
-      .map(item => item.tx);
-    S.tx = [...localOnly, ...imported];
+      .map(item => ({ ...item.tx, googleSynced: false }));
+    const existingPending = pendingTransactions();
+    const pendingByKey = new Map();
+    [...existingPending, ...localOnly].forEach(tx => {
+      pendingByKey.set(pendingTransactionKey(tx), tx);
+    });
+    S.pendingLocalTx = [...pendingByKey.values()];
+    S.tx = imported;
     save();
   } catch (error) {
     console.error('تعذر تحميل المعاملات من Google Sheets:', error);
@@ -766,7 +870,21 @@ function fillSelect(el, arr, val) { el.innerHTML = arr.map(x => `<option value="
 function vDash(c) {
   const ys = []; for (let y = 2024; y <= 2035; y++) ys.push(y);
   const comp = [ ['استثمارات', c.invVal, COL[2]], ['ذهب', c.gold.val, COL[1]], ['سيولة', c.liq, COL[0]], ['ادخار وطوارئ', c.sav, COL[4]] ];
+  const pendingCount = pendingTransactions().length;
+  const cloudWarnings = [];
+  if (!googleTransactionsLoaded) {
+    cloudWarnings.push('لم تكتمل قراءة المعاملات من Google Sheets؛ الأرقام المعروضة قد تكون من ذاكرة هذا الجهاز.');
+  } else if (pendingCount) {
+    cloudWarnings.push('تم توحيد الحسابات على بيانات Google Sheets. يوجد ' + pendingCount + ' معاملة محلية معلقة لا تدخل في الأرقام المشتركة حتى تراجعها وترفعها من الإعدادات.');
+  }
+  if (!cloudSettingsInitialized) {
+    cloudWarnings.push('إعدادات الحسابات وأسعار الصرف والميزانية لم يتم تأكيد مزامنتها بعد. افتح الإعدادات، ثم ارفعها من الجهاز الأساسي.');
+  }
+  const cloudBanner = cloudWarnings.length
+    ? '<div class="alert alert-warning small">' + cloudWarnings.join('<br>') + '</div>'
+    : '';
   return `
+  ${cloudBanner}
   <div class="filter-bar">
     <select class="form-select form-select-sm" id="fy">${ys.map(y => `<option ${y == S.ui.y ? 'selected' : ''}>${y}</option>`).join('')}</select>
     <select class="form-select form-select-sm" id="fm"><option value="all">السنة كاملة</option>${MON.map((n, i) => `<option value="${String(i + 1).padStart(2, '0')}" ${S.ui.m === String(i + 1).padStart(2, '0') ? 'selected' : ''}>${n}</option>`).join('')}</select>
@@ -823,7 +941,7 @@ function vSet() {
   return `
   <div class="row g-3"><div class="col-lg-6"><div class="box"><h3><i class="bi bi-sliders"></i> نسب الميزانية</h3><table class="table mb-0">${CATS.map(c => `<tr><td>${c}</td><td style="width:120px"><div class="input-group input-group-sm"><input type="number" class="form-control" data-b="${c}" min="0" max="100" step="1" value="${Math.round(S.budget[c] * 100)}"><span class="input-group-text">%</span></div></td></tr>`).join('')}<tr><th>المجموع</th><th style="color:var(--${Math.abs(t - 1) < 0.001 ? 'ok' : 'red'})">${pc(t)}</th></tr><tr><td>حد التحذير</td><td><div class="input-group input-group-sm"><input type="number" class="form-control" data-w="1" min="1" max="100" value="${Math.round(S.warn * 100)}"><span class="input-group-text">%</span></div></td></tr></table></div></div>
   <div class="col-lg-6"><div class="box"><h3><i class="bi bi-currency-exchange"></i> أسعار الصرف (إلى الجنيه)</h3><table class="table mb-0"><tr><td>ريال سعودي (SAR)</td><td style="width:140px"><input type="number" step="any" class="form-control form-control-sm" data-r="SAR" value="${S.rates.SAR}"></td></tr><tr><td>دولار أمريكي (USD)</td><td><input type="number" step="any" class="form-control form-control-sm" data-r="USD" value="${S.rates.USD}"></td></tr><tr><td>جنيه مصري (EGP)</td><td><input type="number" class="form-control form-control-sm" value="1" disabled></td></tr></table><p class="note mt-2 mb-0">كل المعاملات تُحوَّل إلى الجنيه حسب هذه الأسعار عند الحساب.</p></div></div>
-  <div class="col-12"><div class="box"><h3><i class="bi bi-cloud-arrow-up"></i> مزامنة الأجهزة</h3><p class="note">المعاملات تُقرأ وتُحفظ في DB_TRANSACTIONS، أما الحسابات وأسعار الأصول وأسعار الصرف ونسب الميزانية فتحتاج حفظًا مشتركًا في Google Sheets حتى تظهر على كل الأجهزة. أول مرة، اضغط الزر من الجهاز الذي يحتوي على إعداداتك الصحيحة؛ وبعدها ستُحمّل الإعدادات تلقائيًا على بقية الأجهزة.</p><p class="small mb-2" id="cloudSyncStatus">${esc(cloudSettingsStatus)}</p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnSyncSettings"><i class="bi bi-cloud-check"></i> مزامنة إعدادات هذا الجهاز</button><button class="btn btn-outline-secondary btn-sm" id="btnReloadCloud"><i class="bi bi-arrow-repeat"></i> تحميل الإعدادات من السحابة</button><button class="btn btn-outline-primary btn-sm" id="btnSyncTxDetails"><i class="bi bi-arrow-left-right"></i> ترحيل تفاصيل المعاملات القديمة</button></div><p class="note mt-2 mb-0">شغّل ترحيل التفاصيل مرة واحدة من الكمبيوتر الأساسي بعد تحديث Apps Script. سيتم تحديث الصفوف المطابقة فقط، وأي صف مكرر أو غير مطابق سيتم تخطيه بأمان.</p></div></div>
+  <div class="col-12"><div class="box"><h3><i class="bi bi-cloud-arrow-up"></i> مزامنة الأجهزة</h3><p class="note">بيانات المعاملات في Google Sheets هي المصدر المشترك للأرقام. أي معاملات قديمة لا تطابق صفًا سحابيًا تُحفظ كمعاملات معلقة على هذا الجهاز ولا تدخل في الإجماليات المشتركة إلى أن ترفعها بعد مراجعتها.</p><p class="small mb-2" id="cloudSyncStatus">${esc(cloudSettingsStatus)}</p><p class="small mb-2">عدد المعاملات المحلية المعلقة: <strong>${pendingTransactions().length}</strong></p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnSyncSettings"><i class="bi bi-cloud-check"></i> مزامنة إعدادات هذا الجهاز</button><button class="btn btn-outline-secondary btn-sm" id="btnReloadCloud"><i class="bi bi-arrow-repeat"></i> تحميل الإعدادات من السحابة</button><button class="btn btn-outline-primary btn-sm" id="btnSyncTxDetails"><i class="bi bi-arrow-left-right"></i> ترحيل تفاصيل المعاملات القديمة</button><button class="btn btn-success btn-sm" id="btnSyncPendingTx"><i class="bi bi-cloud-upload"></i> مراجعة ورفع المعاملات المحلية</button></div><p class="note mt-2 mb-0">رفع المعاملات المعلقة يضيف فقط السجلات التي لا يوجد لها تطابق أساسي في Google. أي سجل متشابه يتم تخطيه لتجنب تكرار محتمل. نفّذ العملية من الجهاز الأساسي وبعد أخذ نسخة احتياطية.</p></div></div>
   <div class="col-12"><div class="box"><h3><i class="bi bi-database"></i> النسخ الاحتياطي</h3><p class="note">تقدر تصدّر نسخة JSON أو CSV، وتستخدمها لاسترجاع البيانات عند الحاجة.</p><div class="d-flex flex-wrap gap-2"><button class="btn btn-primary btn-sm" id="btnExp"><i class="bi bi-download"></i> تصدير JSON</button><button class="btn btn-outline-primary btn-sm" id="btnCsv"><i class="bi bi-filetype-csv"></i> تصدير CSV</button><button class="btn btn-outline-secondary btn-sm" id="btnImp"><i class="bi bi-upload"></i> استيراد</button><button class="btn btn-outline-danger btn-sm" id="btnReset"><i class="bi bi-arrow-counterclockwise"></i> استرجاع التجريبي</button></div></div></div>`;
 }
 
@@ -955,6 +1073,7 @@ document.addEventListener('click', e => {
   if (e.target.closest('#btnSyncSettings')) { saveSharedSettingsToGoogle({ manual: true }); return; }
   if (e.target.closest('#btnReloadCloud')) { loadSharedSettingsFromGoogle().then(() => render()); return; }
   if (e.target.closest('#btnSyncTxDetails')) { syncExistingTransactionDetailsToGoogle(); return; }
+  if (e.target.closest('#btnSyncPendingTx')) { syncPendingTransactionsToGoogle(); return; }
   if (e.target.closest('#btnAddAcc')) { $('#formAcc').reset(); new bootstrap.Modal($('#modalAcc')).show(); return; }
   if (e.target.closest('#btnAddPrice')) { $('#formPrice').reset(); $('#formPrice').date.value = localISODate(); new bootstrap.Modal($('#modalPrice')).show(); return; }
   const editBtn = e.target.closest('[data-edit]');
