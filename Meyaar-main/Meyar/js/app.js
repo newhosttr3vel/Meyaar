@@ -559,7 +559,17 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
 
     const remote = result.state;
     const localRateHistory = Array.isArray(S.rateHistory) ? S.rateHistory : [];
+    const localPendingScheduleIds = Array.isArray(S.pendingRecurringScheduleIds) ? S.pendingRecurringScheduleIds.map(String) : [];
+    const localPendingScheduleIdSet = new Set(localPendingScheduleIds);
+    const localPendingSchedules = (S.recurringSchedules || []).filter(item => localPendingScheduleIdSet.has(String(item.id)));
     const mergedSharedState = { ...S, ...remote, ui: S.ui, tx: S.tx };
+    if (Array.isArray(remote.recurringSchedules) && localPendingScheduleIds.length) {
+      mergedSharedState.recurringSchedules = [
+        ...remote.recurringSchedules.filter(item => !localPendingScheduleIdSet.has(String(item.id))),
+        ...localPendingSchedules
+      ];
+      mergedSharedState.pendingRecurringScheduleIds = localPendingScheduleIds;
+    }
     if (!Object.prototype.hasOwnProperty.call(remote, 'baseRates')) {
       mergedSharedState.baseRates = localRateHistory.length ? (S.baseRates || S.rates) : (remote.rates || S.rates);
     }
@@ -595,6 +605,7 @@ async function saveSharedSettingsToGoogle({ manual = false } = {}) {
       throw new Error((result && (result.message || result.error)) || 'لم تؤكد Google حفظ الإعدادات');
     }
     cloudSettingsInitialized = true;
+    S.pendingRecurringScheduleIds = [];
     cloudSettingsLastUpdated = result.updatedAt || new Date().toISOString();
     cloudSettingsStatus = 'تمت مزامنة الإعدادات مع Google Sheets';
     save();
@@ -747,6 +758,7 @@ function seed() {
     rateHistory: [],
     recurringSchedules: [],
     generatedOccurrences: [],
+    pendingRecurringScheduleIds: [],
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
     warn: 0.9,
     accounts: [
@@ -846,6 +858,9 @@ function normalizeState(input) {
     generatedByKey.set(String(item.key), { ...item, key: String(item.key), scheduleId, date });
   });
   out.generatedOccurrences = [...generatedByKey.values()];
+  out.pendingRecurringScheduleIds = Array.isArray(input.pendingRecurringScheduleIds)
+    ? [...new Set(input.pendingRecurringScheduleIds.map(String))]
+    : [];
 
   out.budget = { ...base.budget, ...obj(input.budget) };
   CATS.forEach(cat => {
@@ -1546,6 +1561,7 @@ $('#formRecurring').addEventListener('submit', async e => {
   S.recurringSchedules = id
     ? (S.recurringSchedules || []).map(item => String(item.id) === id ? schedule : item)
     : [...(S.recurringSchedules || []), schedule];
+  S.pendingRecurringScheduleIds = [...new Set([...(S.pendingRecurringScheduleIds || []), String(schedule.id)])];
   save();
 
   recurringSaveInFlight = true;
@@ -1586,6 +1602,7 @@ async function toggleRecurringSchedule(id, currentlyActive) {
   const schedule = recurringScheduleFor(id);
   if (!schedule) return;
   schedule.active = !currentlyActive;
+  S.pendingRecurringScheduleIds = [...new Set([...(S.pendingRecurringScheduleIds || []), String(schedule.id)])];
   save();
   render();
   const synced = await saveSharedSettingsToGoogle();
