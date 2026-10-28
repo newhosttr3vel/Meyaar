@@ -92,6 +92,129 @@ function transferPairIssues(transactions = S.tx) {
   return issues;
 }
 
+
+// Recurring obligations share their definition through the existing saved settings state.
+// A stable marker in Notes makes each generated occurrence recognizable in Google Sheets too.
+function makeRecurringCloudNote(id, dueDate, name, note = '') {
+  const safeName = String(name || 'التزام دوري').replace(/[\[\]\r\n]/g, ' ').trim().slice(0, 100) || 'التزام دوري';
+  const header = 'التزام متكرر [مرجع:' + id + '] [استحقاق:' + dueDate + '] [الاسم:' + safeName + ']';
+  return header + (String(note || '').trim() ? '\n' + String(note).trim() : '');
+}
+
+function parseRecurringCloudNote(notes) {
+  const raw = String(notes || '');
+  const match = raw.match(/^التزام متكرر \[مرجع:([A-Za-z0-9_-]+)\] \[استحقاق:(\d{4}-\d{2}-\d{2})\] \[الاسم:([^\]]+)\](?:\r?\n([\s\S]*))?$/);
+  if (!match || !isValidISODate(match[2])) return null;
+  return { id: match[1], date: match[2], name: match[3].trim(), note: match[4] || '' };
+}
+
+function recurringOccurrenceKey(scheduleId, dueDate) {
+  return String(scheduleId || '') + '|' + String(dueDate || '');
+}
+
+function recurringId() {
+  return 'REC-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 9).toUpperCase();
+}
+
+function monthDueDate(year, monthIndex, dueDay) {
+  const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+  const day = Math.max(1, Math.min(31, Number(dueDay) || 1));
+  return String(year) + '-' + String(monthIndex + 1).padStart(2, '0') + '-' + String(Math.min(day, lastDay)).padStart(2, '0');
+}
+
+function addCalendarDays(isoDate, amount) {
+  const date = new Date(String(isoDate) + 'T12:00:00');
+  date.setDate(date.getDate() + Number(amount || 0));
+  return localISODate(date);
+}
+
+function occurrenceAlreadyGenerated(scheduleId, dueDate) {
+  const key = recurringOccurrenceKey(scheduleId, dueDate);
+  if ((S.generatedOccurrences || []).some(item => item && item.key === key)) return true;
+  if (S.tx.some(tx => {
+    const meta = parseRecurringCloudNote(googleNotes(tx));
+    return meta && recurringOccurrenceKey(meta.id, meta.date) === key;
+  })) return true;
+  return googleRemoteTransactions.some(tx => {
+    const meta = parseRecurringCloudNote(tx.notes);
+    return meta && recurringOccurrenceKey(meta.id, meta.date) === key;
+  });
+}
+
+function markOccurrenceGenerated(scheduleId, dueDate, txId = '') {
+  const key = recurringOccurrenceKey(scheduleId, dueDate);
+  if (!Array.isArray(S.generatedOccurrences)) S.generatedOccurrences = [];
+  const previous = S.generatedOccurrences.find(item => item && item.key === key);
+  if (previous) {
+    previous.transactionId = txId || previous.transactionId || '';
+    previous.generatedAt = previous.generatedAt || new Date().toISOString();
+  } else {
+    S.generatedOccurrences.push({
+      key, scheduleId: String(scheduleId), date: dueDate,
+      transactionId: txId || '', generatedAt: new Date().toISOString()
+    });
+  }
+}
+
+function recurringOccurrences({ fromDate = localISODate(), daysAhead = 90, todayDate = localISODate() } = {}) {
+  const today = isValidISODate(todayDate) ? todayDate : localISODate();
+  const safeFromDate = isValidISODate(fromDate) ? fromDate : today;
+  const endDate = addCalendarDays(safeFromDate, daysAhead);
+  const rows = [];
+
+  (S.recurringSchedules || []).filter(schedule => schedule.active !== false).forEach(schedule => {
+    if (!isValidISODate(schedule.startDate)) return;
+    let monthCursor = schedule.startDate.slice(0, 7);
+    const endMonth = endDate.slice(0, 7);
+    let latestOverdue = null;
+    const upcoming = [];
+
+    while (monthCursor <= endMonth) {
+      const [year, month] = monthCursor.split('-').map(Number);
+      const dueDate = monthDueDate(year, month - 1, schedule.dueDay);
+      if (dueDate >= schedule.startDate && !occurrenceAlreadyGenerated(schedule.id, dueDate)) {
+        const daysUntil = Math.round((new Date(dueDate + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000);
+        const entry = { schedule, scheduleId: schedule.id, dueDate, daysUntil, key: recurringOccurrenceKey(schedule.id, dueDate) };
+        if (dueDate < today) latestOverdue = entry;
+        else if (dueDate <= endDate) upcoming.push(entry);
+      }
+      const [cursorYear, cursorMonth] = monthCursor.split('-').map(Number);
+      monthCursor = cursorMonth === 12
+        ? String(cursorYear + 1) + '-01'
+        : String(cursorYear) + '-' + String(cursorMonth + 1).padStart(2, '0');
+    }
+
+    // Show only the latest overdue occurrence per schedule, plus upcoming dates in the horizon.
+    if (latestOverdue) rows.push(latestOverdue);
+    rows.push(...upcoming);
+  });
+
+  return rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.schedule.name.localeCompare(b.schedule.name));
+}
+
+function checkRecurringReminders() {
+  const today = localISODate();
+  const seen = new Set(Array.isArray(S.ui.recurringReminderKeys) ? S.ui.recurringReminderKeys : []);
+  const occurrences = recurringOccurrences({ daysAhead: 90 });
+  const alerts = occurrences.filter(item => {
+    const schedule = item.schedule;
+    return !seen.has(item.key) &&
+      ((item.daysUntil < 0 && item.daysUntil >= -7) ||
+        (item.daysUntil >= 0 && item.daysUntil <= Math.max(0, Number(schedule.reminderDays) || 0))) &&
+      item.dueDate <= addCalendarDays(today, Math.max(0, Number(schedule.reminderDays) || 0));
+  });
+  if (!alerts.length) return;
+  alerts.forEach(item => seen.add(item.key));
+  S.ui.recurringReminderKeys = [...seen].slice(-1000);
+  save();
+  const nearest = alerts.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+  const overdue = alerts.filter(item => item.daysUntil < 0).length;
+  const msg = overdue
+    ? 'لديك ' + overdue + ' التزام/التزامات متأخرة. أقربها: ' + nearest.schedule.name + ' (' + nearest.dueDate + '). افتح «الالتزامات» للمراجعة.'
+    : 'لديك ' + alerts.length + ' التزام/التزامات قريبة الاستحقاق. أقربها: ' + nearest.schedule.name + ' (' + nearest.dueDate + ').';
+  showAppToast(msg, 15000);
+}
+
 function numericCell(value, fallback = '') {
   if (value === '' || value === null || value === undefined) return fallback;
   const number = Number(value);
@@ -103,6 +226,8 @@ function sharedSettingsPayload() {
     rates: S.rates,
     baseRates: S.baseRates,
     rateHistory: S.rateHistory,
+    recurringSchedules: S.recurringSchedules,
+    generatedOccurrences: S.generatedOccurrences,
     budget: S.budget,
     warn: S.warn,
     accounts: S.accounts,
@@ -261,6 +386,7 @@ async function loadDataFromGoogle({ renderAfter = true } = {}) {
       if (!isValidISODate(date) || !Number.isFinite(amount) || amount <= 0) return;
 
       const transferMeta = parseTransferCloudNote(notes);
+      const recurringMeta = parseRecurringCloudNote(notes);
       const remote = { date, type, amt: amount, cat, notes };
       let match = localPool.find(item => !item.used && sameRemoteCore(item.tx, remote) && googleNotes(item.tx) === notes);
       if (!match) {
@@ -313,18 +439,28 @@ async function loadDataFromGoogle({ renderAfter = true } = {}) {
           tx.note = transferMeta.note;
           tx.name = transferDisplayName(type, transferMeta);
         }
+        if (recurringMeta) {
+          tx.recurringId = recurringMeta.id;
+          tx.recurringDate = recurringMeta.date;
+          tx.recurringNote = recurringMeta.note;
+          tx.note = recurringMeta.note;
+          tx.name = recurringMeta.name;
+        }
         tx.googleSynced = true;
         imported.push(tx);
       } else {
         imported.push({
           id: allocateId(), date, type, amt: amount, cat,
-          note: transferMeta ? transferMeta.note : notes,
+          note: recurringMeta ? recurringMeta.note : (transferMeta ? transferMeta.note : notes),
           googleNotes: notes, googleSynced: true,
-          name: transferMeta ? transferDisplayName(type, transferMeta) : (notes || 'معاملة من Google Sheets'),
+          name: recurringMeta ? recurringMeta.name : (transferMeta ? transferDisplayName(type, transferMeta) : (notes || 'معاملة من Google Sheets')),
           transferId: transferMeta ? transferMeta.id : '',
           transferFrom: transferMeta ? transferMeta.from : '',
           transferTo: transferMeta ? transferMeta.to : '',
           transferNote: transferMeta ? transferMeta.note : '',
+          recurringId: recurringMeta ? recurringMeta.id : '',
+          recurringDate: recurringMeta ? recurringMeta.date : '',
+          recurringNote: recurringMeta ? recurringMeta.note : '',
           fee: hasFullSchema ? remoteDetails.fee : 0,
           pay: hasFullSchema ? remoteDetails.pay : 'نقدي',
           acc: hasFullSchema ? remoteDetails.acc : 'CASH',
@@ -361,8 +497,14 @@ async function loadDataFromGoogle({ renderAfter = true } = {}) {
     });
     S.pendingLocalTx = [...pendingByKey.values()];
     S.tx = imported;
+    // Rebuild the generation ledger from sheet markers if saving shared settings was interrupted.
+    S.tx.forEach(tx => {
+      const meta = parseRecurringCloudNote(googleNotes(tx));
+      if (meta) markOccurrenceGenerated(meta.id, meta.date, String(tx.id));
+    });
     save();
   } catch (error) {
+    googleTransactionsLoaded = false;
     console.error('تعذر تحميل المعاملات من Google Sheets:', error);
   } finally {
     if (renderAfter && typeof render === 'function') render();
@@ -417,7 +559,17 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
 
     const remote = result.state;
     const localRateHistory = Array.isArray(S.rateHistory) ? S.rateHistory : [];
+    const localPendingScheduleIds = Array.isArray(S.pendingRecurringScheduleIds) ? S.pendingRecurringScheduleIds.map(String) : [];
+    const localPendingScheduleIdSet = new Set(localPendingScheduleIds);
+    const localPendingSchedules = (S.recurringSchedules || []).filter(item => localPendingScheduleIdSet.has(String(item.id)));
     const mergedSharedState = { ...S, ...remote, ui: S.ui, tx: S.tx };
+    if (Array.isArray(remote.recurringSchedules) && localPendingScheduleIds.length) {
+      mergedSharedState.recurringSchedules = [
+        ...remote.recurringSchedules.filter(item => !localPendingScheduleIdSet.has(String(item.id))),
+        ...localPendingSchedules
+      ];
+      mergedSharedState.pendingRecurringScheduleIds = localPendingScheduleIds;
+    }
     if (!Object.prototype.hasOwnProperty.call(remote, 'baseRates')) {
       mergedSharedState.baseRates = localRateHistory.length ? (S.baseRates || S.rates) : (remote.rates || S.rates);
     }
@@ -453,6 +605,7 @@ async function saveSharedSettingsToGoogle({ manual = false } = {}) {
       throw new Error((result && (result.message || result.error)) || 'لم تؤكد Google حفظ الإعدادات');
     }
     cloudSettingsInitialized = true;
+    S.pendingRecurringScheduleIds = [];
     cloudSettingsLastUpdated = result.updatedAt || new Date().toISOString();
     cloudSettingsStatus = 'تمت مزامنة الإعدادات مع Google Sheets';
     save();
@@ -603,6 +756,9 @@ function seed() {
     rates: { EGP: 1, SAR: 12.9, USD: 48.5 },
     baseRates: { EGP: 1, SAR: 12.9, USD: 48.5 },
     rateHistory: [],
+    recurringSchedules: [],
+    generatedOccurrences: [],
+    pendingRecurringScheduleIds: [],
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
     warn: 0.9,
     accounts: [
@@ -622,12 +778,15 @@ function normalizeState(input) {
   const obj = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const out = { ...base, ...input };
   out.ui = { ...base.ui, ...obj(input.ui) };
-  if (!['dash', 'tx', 'acc', 'ast', 'set', 'aud'].includes(out.ui.tab)) out.ui.tab = 'dash';
+  if (!['dash', 'tx', 'acc', 'ast', 'set', 'aud', 'rec'].includes(out.ui.tab)) out.ui.tab = 'dash';
   out.ui.y = Number.isInteger(Number(out.ui.y)) && Number(out.ui.y) >= 1900 && Number(out.ui.y) <= 2200 ? Number(out.ui.y) : base.ui.y;
   out.ui.m = out.ui.m === 'all' || /^(0[1-9]|1[0-2])$/.test(String(out.ui.m)) ? String(out.ui.m) : 'all';
   out.ui.q = String(out.ui.q || '');
   out.ui.theme = out.ui.theme === 'dark' ? 'dark' : 'light';
   out.ui.fxDate = isValidISODate(out.ui.fxDate) ? out.ui.fxDate : localISODate();
+  out.ui.recurringReminderKeys = Array.isArray(out.ui.recurringReminderKeys)
+    ? out.ui.recurringReminderKeys.map(String).slice(-1000)
+    : [];
 
   out.rates = { ...base.rates, ...obj(input.rates) };
   Object.keys(out.rates).forEach(cur => {
@@ -657,6 +816,51 @@ function normalizeState(input) {
   out.rateHistory = [...rateHistoryByKey.values()].sort((a, b) =>
     a.date.localeCompare(b.date) || a.cur.localeCompare(b.cur)
   );
+
+  const recurringIds = new Set();
+  out.recurringSchedules = (Array.isArray(input.recurringSchedules) ? input.recurringSchedules : [])
+    .filter(item => {
+      if (!item || typeof item !== 'object' || !String(item.id || '').trim() || recurringIds.has(String(item.id))) return false;
+      recurringIds.add(String(item.id));
+      return true;
+    })
+    .map(item => {
+      const type = item.type === 'دخل' ? 'دخل' : 'مصروف';
+      const allowedCats = type === 'دخل' ? ['دخل'] : [...CATS.filter(cat => cat !== 'الاستثمارات'), 'رسوم وضرائب', 'أخرى'];
+      const amount = Number(item.amount);
+      const feeAmount = Number(item.fee || 0);
+      const startDate = normalizeGoogleDate(item.startDate);
+      return {
+        id: String(item.id),
+        name: String(item.name || 'التزام دوري').trim().slice(0, 100),
+        type,
+        cat: allowedCats.includes(item.cat) ? String(item.cat) : (type === 'دخل' ? 'دخل' : 'الأساسيات'),
+        amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+        fee: Number.isFinite(feeAmount) && feeAmount >= 0 ? feeAmount : 0,
+        cur: ['EGP', 'SAR', 'USD'].includes(item.cur) ? item.cur : 'EGP',
+        acc: String(item.acc || 'CASH'),
+        pay: PAY.includes(item.pay) ? item.pay : 'نقدي',
+        startDate: isValidISODate(startDate) ? startDate : localISODate(),
+        dueDay: Math.max(1, Math.min(31, Math.trunc(Number(item.dueDay) || 1))),
+        reminderDays: Math.max(0, Math.min(30, Math.trunc(Number(item.reminderDays) || 0))),
+        note: String(item.note || '').slice(0, 300),
+        active: item.active !== false,
+        createdAt: String(item.createdAt || '')
+      };
+    })
+    .filter(item => item.name && item.amount > 0);
+  const generatedByKey = new Map();
+  (Array.isArray(input.generatedOccurrences) ? input.generatedOccurrences : []).forEach(item => {
+    if (!item || typeof item !== 'object' || !String(item.key || '').trim()) return;
+    const scheduleId = String(item.scheduleId || '');
+    const date = normalizeGoogleDate(item.date);
+    if (!scheduleId || !isValidISODate(date)) return;
+    generatedByKey.set(String(item.key), { ...item, key: String(item.key), scheduleId, date });
+  });
+  out.generatedOccurrences = [...generatedByKey.values()];
+  out.pendingRecurringScheduleIds = Array.isArray(input.pendingRecurringScheduleIds)
+    ? [...new Set(input.pendingRecurringScheduleIds.map(String))]
+    : [];
 
   out.budget = { ...base.budget, ...obj(input.budget) };
   CATS.forEach(cat => {
@@ -1126,6 +1330,68 @@ function vAst(c) {
   <div class="box"><h3><i class="bi bi-currency-exchange"></i> أسعار الأصول</h3><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>الرمز</th><th>الفئة</th><th>السعر الحالي (ج.م)</th><th>تاريخ التحديث</th></tr></thead><tbody>${S.prices.map((p, i) => `<tr><td><code>${esc(p.code)}</code></td><td>${esc(p.cat)}</td><td><input type="number" step="any" class="form-control form-control-sm" data-s="prices" data-i="${i}" data-k="price" value="${+(+p.price).toFixed(4)}" style="max-width:120px"></td><td><input type="date" class="form-control form-control-sm" data-s="prices" data-i="${i}" data-k="date" value="${p.date || ''}" style="max-width:150px"></td></tr>`).join('')}</tbody></table></div><p class="note mt-2 mb-0">الأسعار المبدئية للأسهم = سعر الشراء. حدّثها من السوق.</p></div>`;
 }
 
+
+function recurringAmountLabel(schedule) {
+  return f(schedule.amount) + ' ' + (CURS[schedule.cur] || schedule.cur || 'ج.م.');
+}
+
+function vRecurring() {
+  const schedules = [...(S.recurringSchedules || [])].sort((a, b) => Number(b.active) - Number(a.active) || a.dueDay - b.dueDay || a.name.localeCompare(b.name));
+  const active = schedules.filter(schedule => schedule.active !== false);
+  const inactive = schedules.filter(schedule => schedule.active === false);
+  const occurrences = recurringOccurrences({ daysAhead: 90 });
+  const today = localISODate();
+  const overdueCount = occurrences.filter(item => item.dueDate < today).length;
+  const dueTodayCount = occurrences.filter(item => item.dueDate === today).length;
+  const nextMonth = occurrences.filter(item => item.dueDate >= today && item.dueDate <= addCalendarDays(today, 30));
+  const nextMonthTotal = nextMonth.reduce((sum, item) =>
+    sum + toEGP(item.schedule.amount + item.schedule.fee, item.schedule.cur, item.dueDate), 0);
+  const reminderInfo = cloudSettingsInitialized
+    ? '<span class="rec-sync-pill"><i class="bi bi-cloud-check"></i> الالتزامات مشتركة بين أجهزتك</span>'
+    : '<span class="rec-sync-pill is-warning"><i class="bi bi-cloud-exclamation"></i> مزامنة الإعدادات تحتاج تأكيدًا</span>';
+
+  const occurrenceCards = occurrences.length ? occurrences.map(item => {
+    const schedule = item.schedule;
+    const isOverdue = item.dueDate < today;
+    const isToday = item.dueDate === today;
+    const statusLabel = isOverdue ? 'متأخر' : isToday ? 'مستحق اليوم' : 'بعد ' + item.daysUntil + ' يوم';
+    const statusClass = isOverdue ? 'tag-er' : isToday ? 'tag-wn' : 'tag-ok';
+    const action = item.dueDate <= today
+      ? '<button class="btn btn-primary btn-sm" data-generate-occurrence="' + esc(schedule.id) + '" data-due-date="' + esc(item.dueDate) + '"><i class="bi bi-check2-circle"></i> مراجعة وتسجيل</button>'
+      : '<span class="rec-upcoming-state"><i class="bi bi-calendar-event"></i> لم يحن موعد التسجيل</span>';
+    return '<article class="rec-agenda-item ' + (isOverdue ? 'is-overdue' : isToday ? 'is-today' : '') + '">' +
+      '<div class="rec-date-tile"><strong>' + esc(item.dueDate.slice(-2)) + '</strong><span>' + esc(MON[Number(item.dueDate.slice(5, 7)) - 1]) + '</span><small>' + esc(item.dueDate.slice(0, 4)) + '</small></div>' +
+      '<div class="rec-agenda-content"><div class="rec-agenda-top"><strong>' + esc(schedule.name) + '</strong><span class="tag ' + statusClass + '">' + statusLabel + '</span></div>' +
+      '<div class="rec-agenda-meta"><span><i class="bi ' + (schedule.type === 'دخل' ? 'bi-arrow-down-left-circle' : 'bi-arrow-up-right-circle') + '"></i> ' + esc(schedule.type) + ' · ' + esc(schedule.cat) + '</span><span><i class="bi bi-wallet2"></i> ' + esc(accountDisplayName(schedule.acc)) + '</span></div>' +
+      '<div class="rec-agenda-bottom"><strong class="rec-amount ' + (schedule.type === 'دخل' ? 'is-income' : 'is-expense') + '">' + esc(recurringAmountLabel(schedule)) + (schedule.fee ? ' <small>+ رسوم ' + f(schedule.fee) + '</small>' : '') + '</strong>' + action + '</div></div></article>';
+  }).join('') : '<div class="rec-empty"><span><i class="bi bi-calendar2-check"></i></span><strong>مفيش استحقاقات قادمة مسجلة</strong><p>ابدأ بإضافة الإيجار أو المرتب أو الاشتراكات الشهرية، ومِعيار هيرتب لك مواعيدها هنا.</p><button class="btn btn-primary" id="btnAddRecurringEmpty"><i class="bi bi-plus-lg"></i> إضافة أول التزام</button></div>';
+
+  const scheduleCards = schedules.length ? schedules.map(schedule => {
+    const next = occurrences.find(item => item.scheduleId === schedule.id) || null;
+    const nextText = next ? next.dueDate + (next.dueDate < today ? ' · متأخر' : '') : 'لا يوجد موعد ظاهر خلال الفترة القادمة';
+    const stateClass = schedule.active === false ? 'tag-wn' : 'tag-ok';
+    const stateLabel = schedule.active === false ? 'متوقف' : 'نشط';
+    return '<article class="rec-schedule-card ' + (schedule.active === false ? 'is-inactive' : '') + '">' +
+      '<div class="rec-schedule-head"><div class="rec-schedule-icon"><i class="bi ' + (schedule.type === 'دخل' ? 'bi-cash-coin' : 'bi-receipt') + '"></i></div><div class="rec-schedule-title"><strong>' + esc(schedule.name) + '</strong><span>' + esc(schedule.type) + ' · ' + esc(schedule.cat) + '</span></div><span class="tag ' + stateClass + '">' + stateLabel + '</span></div>' +
+      '<div class="rec-schedule-amount">' + esc(recurringAmountLabel(schedule)) + '<small> شهريًا</small></div>' +
+      '<div class="rec-schedule-details"><span><i class="bi bi-calendar3"></i> يوم ' + schedule.dueDay + ' من كل شهر</span><span><i class="bi bi-bell"></i> التنبيه قبلها بـ ' + schedule.reminderDays + ' يوم</span><span><i class="bi bi-wallet2"></i> ' + esc(accountDisplayName(schedule.acc)) + '</span><span><i class="bi bi-calendar-check"></i> أقرب استحقاق: ' + esc(nextText) + '</span></div>' +
+      '<div class="rec-schedule-actions"><button class="btn btn-sm btn-outline-primary" data-edit-recurring="' + esc(schedule.id) + '"><i class="bi bi-pencil"></i> تعديل</button><button class="btn btn-sm btn-outline-secondary" data-toggle-recurring="' + esc(schedule.id) + '" data-active="' + (schedule.active === false ? '0' : '1') + '"><i class="bi ' + (schedule.active === false ? 'bi-play-circle' : 'bi-pause-circle') + '"></i> ' + (schedule.active === false ? 'تفعيل' : 'إيقاف مؤقت') + '</button></div></article>';
+  }).join('') : '<div class="rec-empty rec-empty-compact"><span><i class="bi bi-calendar2-plus"></i></span><strong>لسه مفيش التزامات متكررة</strong><p>سجل الالتزام مرة واحدة بدل ما تعيد إدخاله كل شهر.</p></div>';
+
+  const inactiveNote = inactive.length
+    ? '<p class="note mb-0 mt-3">يوجد ' + inactive.length + ' التزام/التزامات متوقفة؛ لن تظهر في التقويم أو ترسل تنبيهات حتى تعيد تفعيلها.</p>'
+    : '';
+
+  return '<section class="recurring-page">' +
+    '<div class="recurring-hero mb-3"><div class="recurring-hero-copy"><span class="rec-eyebrow"><i class="bi bi-calendar2-week"></i> التنظيم المالي الشهري</span><h2>التزاماتك تحت السيطرة</h2><p>سجل الإيجار والمرتب والفواتير مرة واحدة. هتشوف المواعيد القادمة، وتراجع كل استحقاق قبل إضافته للمعاملات.</p><div class="mt-2">' + reminderInfo + '</div></div><button class="btn btn-light rec-primary-action" id="btnAddRecurring"><i class="bi bi-plus-lg"></i> التزام جديد</button></div>' +
+    '<div class="row g-3 mb-3"><div class="col-6 col-lg-4"><div class="rec-kpi"><span>التزامات نشطة</span><strong>' + active.length + '</strong><small>تتكرر كل شهر</small></div></div><div class="col-6 col-lg-4"><div class="rec-kpi ' + (overdueCount ? 'has-warning' : '') + '"><span>استحقاقات متأخرة</span><strong>' + overdueCount + '</strong><small>' + dueTodayCount + ' مستحق اليوم</small></div></div><div class="col-12 col-lg-4"><div class="rec-kpi"><span>قيمة الالتزامات خلال 30 يومًا</span><strong>' + f(nextMonthTotal) + ' ج.م.</strong><small>تحويل تقديري باستخدام أسعار مِعيار الحالية</small></div></div></div>' +
+    '<div class="box rec-agenda-box mb-3"><div class="rec-section-heading"><div><h3><i class="bi bi-calendar-week"></i> تقويم الاستحقاقات القادمة</h3><p>مواعيد اليوم والـ 90 يوم الجايين. التسجيل لا يتم تلقائيًا؛ لازم تراجع كل استحقاق وتؤكد بنفسك.</p></div><span class="rec-count">' + occurrences.length + ' استحقاق</span></div><div class="rec-agenda">' + occurrenceCards + '</div></div>' +
+    '<div class="rec-section-heading rec-schedules-heading"><div><h3><i class="bi bi-arrow-repeat"></i> الالتزامات المتكررة</h3><p>تقدر تعدّل الموعد أو توقف الالتزام مؤقتًا من غير حذف معاملاته السابقة.</p></div></div>' +
+    '<div class="rec-schedule-grid">' + scheduleCards + '</div>' + inactiveNote +
+    '<div class="alert alert-info small mt-3 mb-0"><i class="bi bi-info-circle"></i> التنبيهات بتظهر أثناء فتح مِعيار على الجهاز. لو الموقع مقفول تمامًا، مش هيقدر يرسل إشعارًا في الخلفية. المعاملة بتتسجل فقط بعد تأكيدك، ومعرّف الاستحقاق بيتحفظ في ملاحظات صف Google عشان يمنع إعادة تسجيله عند المراجعة لاحقًا.</div>' +
+  '</section>';
+}
+
 function vSet() {
   const t = CATS.reduce((s, c) => s + (+S.budget[c] || 0), 0);
   const rateHistory = [...(S.rateHistory || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
@@ -1172,7 +1438,7 @@ function render() {
   destroyCharts();
   $$('#navTabs .nav-link').forEach(b => b.classList.toggle('active', b.dataset.tab === S.ui.tab));
   const c = calc();
-  const views = { dash: vDash, tx: vTx, acc: vAcc, ast: vAst, set: vSet, aud: vAud };
+  const views = { dash: vDash, tx: vTx, acc: vAcc, ast: vAst, set: vSet, aud: vAud, rec: vRecurring };
   $('#app').innerHTML = views[S.ui.tab](c);
   if (S.ui.tab === 'dash') { requestAnimationFrame(() => { renderBudgetBars(c); renderExpenseDonut(c); renderAssetDonut(c); renderIncExp(c); renderBalanceLine(c); }); }
   const icon = $('#btnTheme i');
@@ -1180,6 +1446,292 @@ function render() {
 }
 let editingTx = null;
 let txSaveInFlight = false;
+
+let recurringSaveInFlight = false;
+const recurringGenerationInFlight = new Set();
+
+function recurringCategoryList(type) {
+  return type === 'دخل' ? ['دخل'] : [...CATS.filter(cat => cat !== 'الاستثمارات'), 'رسوم وضرائب', 'أخرى'];
+}
+
+function populateRecurringCategories(type, selected) {
+  fillSelect($('#recCategory'), recurringCategoryList(type), selected || (type === 'دخل' ? 'دخل' : 'الأساسيات'));
+}
+
+function openRecurringModal(id = '') {
+  if (txSaveInFlight || transferInFlight || recurringSaveInFlight || recurringGenerationInFlight.size) {
+    showAppToast('هناك عملية حفظ قيد التنفيذ. انتظر تأكيدها قبل بدء عملية أخرى.', 4000);
+    return;
+  }
+  const schedule = id ? recurringScheduleFor(id) : null;
+  if (id && !schedule) {
+    showAppToast('لم أجد الالتزام المطلوب. حدّث الصفحة وحاول مرة أخرى.', 4500);
+    return;
+  }
+
+  const form = $('#formRecurring');
+  form.reset();
+  form.elements.namedItem('id').value = schedule ? schedule.id : '';
+  form.elements.namedItem('name').value = schedule ? schedule.name : '';
+  form.elements.namedItem('type').value = schedule ? schedule.type : 'مصروف';
+  populateRecurringCategories(schedule ? schedule.type : 'مصروف', schedule ? schedule.cat : 'الأساسيات');
+  const accountOptions = S.accounts.map(account =>
+    '<option value="' + esc(account.code) + '">' + esc(account.name) + ' (' + esc(account.code) + ')</option>'
+  ).join('');
+  form.elements.namedItem('acc').innerHTML = accountOptions;
+  form.elements.namedItem('acc').value = schedule ? schedule.acc : (S.accounts[0] ? S.accounts[0].code : '');
+  fillSelect(form.elements.namedItem('pay'), PAY, schedule ? schedule.pay : 'نقدي');
+  form.elements.namedItem('amount').value = schedule ? schedule.amount : '';
+  form.elements.namedItem('fee').value = schedule ? schedule.fee : 0;
+  form.elements.namedItem('cur').value = schedule ? schedule.cur : 'EGP';
+  form.elements.namedItem('startDate').value = schedule ? schedule.startDate : localISODate();
+  form.elements.namedItem('dueDay').value = schedule ? schedule.dueDay : Number(localISODate().slice(-2));
+  form.elements.namedItem('reminderDays').value = schedule ? schedule.reminderDays : 3;
+  form.elements.namedItem('note').value = schedule ? schedule.note : '';
+  $('#modalRecurringTitle').textContent = schedule ? 'تعديل الالتزام المتكرر' : 'التزام متكرر جديد';
+  $('#btnSaveRecurring').innerHTML = schedule
+    ? '<i class="bi bi-check-lg"></i> حفظ التعديلات'
+    : '<i class="bi bi-check-lg"></i> حفظ الالتزام';
+  new bootstrap.Modal($('#modalRecurring')).show();
+}
+
+function sameRecurringDefinition(a, b) {
+  return String(a.name || '').trim().toLocaleLowerCase() === String(b.name || '').trim().toLocaleLowerCase() &&
+    a.type === b.type && a.cat === b.cat && a.acc === b.acc && a.cur === b.cur &&
+    Math.abs(Number(a.amount) - Number(b.amount)) < 0.005 &&
+    Math.abs(Number(a.fee || 0) - Number(b.fee || 0)) < 0.005 &&
+    Number(a.dueDay) === Number(b.dueDay);
+}
+
+$('#formRecurring').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (recurringSaveInFlight) return;
+  if (!cloudSettingsInitialized) {
+    alert('لا يمكن تأكيد مزامنة الالتزامات بين الأجهزة بعد. افتح الإعدادات على الجهاز الأساسي واضغط «مزامنة إعدادات هذا الجهاز» أولًا.');
+    return;
+  }
+
+  const d = Object.fromEntries(new FormData(e.target));
+  const id = String(d.id || '');
+  const type = d.type === 'دخل' ? 'دخل' : 'مصروف';
+  const amount = Number(d.amount);
+  const feeAmount = Number(d.fee || 0);
+  const dueDay = Number(d.dueDay);
+  const reminderDays = Number(d.reminderDays);
+  const startDate = String(d.startDate || '');
+  if (!String(d.name || '').trim()) { alert('اكتب اسمًا واضحًا للالتزام.'); return; }
+  if (!Number.isFinite(amount) || amount <= 0) { alert('المبلغ يجب أن يكون أكبر من صفر.'); return; }
+  if (!Number.isFinite(feeAmount) || feeAmount < 0) { alert('الرسوم يجب أن تكون صفرًا أو أكبر.'); return; }
+  if (!isValidISODate(startDate)) { alert('اختار تاريخ بداية صحيحًا.'); return; }
+  if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) { alert('يوم الاستحقاق لازم يكون من 1 إلى 31.'); return; }
+  if (!Number.isInteger(reminderDays) || reminderDays < 0 || reminderDays > 30) { alert('اختار فترة تنبيه من 0 إلى 30 يومًا.'); return; }
+  if (!S.accounts.some(account => account.code === d.acc)) { alert('اختار حسابًا موجودًا في النظام.'); return; }
+  if (!['EGP', 'SAR', 'USD'].includes(d.cur)) { alert('العملة المحددة غير مدعومة.'); return; }
+
+  const previousSchedule = id ? recurringScheduleFor(id) : null;
+  const schedule = {
+    id: id || recurringId(),
+    name: String(d.name).trim().slice(0, 100),
+    type,
+    cat: type === 'دخل' ? 'دخل' : String(d.cat || 'الأساسيات'),
+    amount,
+    fee: feeAmount,
+    cur: d.cur,
+    acc: String(d.acc),
+    pay: PAY.includes(d.pay) ? d.pay : 'نقدي',
+    startDate,
+    dueDay,
+    reminderDays,
+    note: String(d.note || '').trim().slice(0, 300),
+    active: previousSchedule ? previousSchedule.active !== false : true,
+    createdAt: previousSchedule ? (previousSchedule.createdAt || new Date().toISOString()) : new Date().toISOString()
+  };
+
+  if (!recurringCategoryList(type).includes(schedule.cat)) {
+    alert('اختار تصنيفًا مناسبًا لنوع الحركة.');
+    return;
+  }
+  const duplicate = (S.recurringSchedules || []).find(item =>
+    String(item.id) !== String(schedule.id) && sameRecurringDefinition(item, schedule)
+  );
+  if (duplicate) {
+    alert('يوجد التزام مسجل بنفس الاسم والحساب والمبلغ ويوم الاستحقاق (' + duplicate.name + '). افتح الالتزام الموجود وعدّله بدل إنشاء نسخة قد تسبب تكرارًا.');
+    return;
+  }
+
+  S.recurringSchedules = id
+    ? (S.recurringSchedules || []).map(item => String(item.id) === id ? schedule : item)
+    : [...(S.recurringSchedules || []), schedule];
+  S.pendingRecurringScheduleIds = [...new Set([...(S.pendingRecurringScheduleIds || []), String(schedule.id)])];
+  save();
+
+  recurringSaveInFlight = true;
+  const button = $('#btnSaveRecurring'), oldHtml = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = '<span class="spinner-border spinner-border-sm" aria-hidden="true"></span> جارٍ حفظ الالتزام…';
+  try {
+    if (cloudSettingsSyncTimer) {
+      clearTimeout(cloudSettingsSyncTimer);
+      cloudSettingsSyncTimer = null;
+    }
+    const synced = await saveSharedSettingsToGoogle();
+    bootstrap.Modal.getInstance($('#modalRecurring')).hide();
+    render();
+    checkRecurringReminders();
+    showAppToast(
+      synced
+        ? 'تم حفظ الالتزام ومزامنة مواعيده بين أجهزتك.'
+        : 'تم حفظ الالتزام على هذا الجهاز، لكن لم يتم تأكيد رفعه للسحابة. افتح الإعدادات وراجع حالة المزامنة.',
+      7000
+    );
+  } finally {
+    recurringSaveInFlight = false;
+    button.disabled = false;
+    button.innerHTML = oldHtml;
+  }
+});
+
+async function toggleRecurringSchedule(id, currentlyActive) {
+  if (recurringSaveInFlight || recurringGenerationInFlight.size) {
+    showAppToast('هناك عملية التزام قيد التنفيذ. انتظر اكتمالها.', 4000);
+    return;
+  }
+  if (!cloudSettingsInitialized) {
+    alert('افتح الإعدادات على الجهاز الأساسي وأكّد مزامنة الإعدادات قبل تعديل الالتزامات المشتركة.');
+    return;
+  }
+  const schedule = recurringScheduleFor(id);
+  if (!schedule) return;
+  recurringSaveInFlight = true;
+  try {
+    schedule.active = !currentlyActive;
+    S.pendingRecurringScheduleIds = [...new Set([...(S.pendingRecurringScheduleIds || []), String(schedule.id)])];
+    save();
+    render();
+    const synced = await saveSharedSettingsToGoogle();
+    showAppToast(synced
+      ? (schedule.active ? 'تم تفعيل الالتزام من جديد.' : 'تم إيقاف الالتزام مؤقتًا.')
+      : 'تم التغيير على هذا الجهاز لكن لم يتم تأكيد مزامنته بين الأجهزة.', 6000);
+  } finally {
+    recurringSaveInFlight = false;
+  }
+}
+
+async function generateRecurringOccurrence(scheduleId, dueDate) {
+  const key = recurringOccurrenceKey(scheduleId, dueDate);
+  if (recurringGenerationInFlight.has(key)) return;
+  if (!googleTransactionsLoaded || !cloudSettingsInitialized) {
+    alert('يلزم اكتمال قراءة معاملات Google Sheets ومزامنة الإعدادات قبل تسجيل استحقاق، حتى نتحقق من عدم تكراره.');
+    return;
+  }
+  const initialSchedule = recurringScheduleFor(scheduleId);
+  if (!initialSchedule || initialSchedule.active === false) {
+    showAppToast('هذا الالتزام متوقف أو غير موجود.', 4000);
+    return;
+  }
+  if (!isValidISODate(dueDate) || dueDate > localISODate()) {
+    showAppToast('لن يتم إنشاء معاملة قبل تاريخ الاستحقاق.', 4000);
+    return;
+  }
+  const [dueYear, dueMonth] = dueDate.split('-').map(Number);
+  if (monthDueDate(dueYear, dueMonth - 1, initialSchedule.dueDay) !== dueDate || dueDate < initialSchedule.startDate) {
+    showAppToast('التاريخ المحدد لا يطابق استحقاق هذا الالتزام.', 4000);
+    return;
+  }
+  recurringGenerationInFlight.add(key);
+  if (!confirm(
+    'تأكيد تسجيل الاستحقاق؟\n\n' + initialSchedule.name + '\n' +
+    'التاريخ: ' + dueDate + '\n' +
+    'المبلغ: ' + recurringAmountLabel(initialSchedule) + '\n' +
+    'الحساب: ' + accountDisplayName(initialSchedule.acc) + '\n\n' +
+    'سيتم إنشاء المعاملة مرة واحدة فقط إذا لم يكن لهذا الاستحقاق سجل في Google Sheets.'
+  )) {
+    recurringGenerationInFlight.delete(key);
+    return;
+  }
+
+  try {
+    // Refresh cloud settings and transactions immediately before creating an occurrence.
+    await loadSharedSettingsFromGoogle({ renderAfter: false });
+    await loadDataFromGoogle({ renderAfter: false });
+    if (!googleTransactionsLoaded) throw new Error('تعذرت قراءة Google Sheets للتحقق من الاستحقاق.');
+
+    const schedule = recurringScheduleFor(scheduleId);
+    if (!schedule || schedule.active === false) {
+      render();
+      showAppToast('الالتزام لم يعد نشطًا بعد تحديث البيانات. لم يتم تسجيل شيء.', 5000);
+      return;
+    }
+
+    if (occurrenceAlreadyGenerated(scheduleId, dueDate)) {
+      markOccurrenceGenerated(scheduleId, dueDate);
+      save();
+      const ledgerSynced = await saveSharedSettingsToGoogle();
+      render();
+      showAppToast(
+        ledgerSynced
+          ? 'الاستحقاق مسجل بالفعل في البيانات المشتركة؛ لم يتم إنشاء معاملة مكررة.'
+          : 'الاستحقاق موجود في Google Sheets؛ لم يتم إنشاء نسخة ثانية.',
+        6500
+      );
+      return;
+    }
+
+    const tx = {
+      id: Math.max(0, ...S.tx.map(item => Number(item.id) || 0)) + 1,
+      date: dueDate,
+      name: schedule.name,
+      type: schedule.type,
+      cat: schedule.cat,
+      amt: Number(schedule.amount),
+      fee: Number(schedule.fee || 0),
+      acc: schedule.acc,
+      pay: schedule.pay,
+      code: '',
+      qty: '',
+      price: '',
+      note: schedule.note || '',
+      googleNotes: makeRecurringCloudNote(schedule.id, dueDate, schedule.name, schedule.note || ''),
+      cur: schedule.cur,
+      recurringId: schedule.id,
+      recurringDate: dueDate,
+      recurringNote: schedule.note || ''
+    };
+    const ids = {};
+    S.tx.forEach(item => { ids[item.id] = (ids[item.id] || 0) + 1; });
+    const validation = status(tx, ids);
+    if (validation !== 'سليم') throw new Error('لا يمكن إنشاء المعاملة: ' + validation);
+
+    // Do not mark the occurrence as generated until the transaction write is confirmed.
+    await saveTransactionToGoogle(tx);
+    tx.googleSynced = true;
+    S.tx.push(tx);
+    googleRemoteTransactions.push({
+      date: normalizeGoogleDate(tx.date), type: tx.type, amt: tx.amt, cat: tx.cat,
+      notes: googleNotes(tx)
+    });
+    markOccurrenceGenerated(schedule.id, dueDate, String(tx.id));
+    save();
+
+    const stateSynced = await saveSharedSettingsToGoogle();
+    render();
+    showAppToast(
+      stateSynced
+        ? 'تم تسجيل استحقاق «' + schedule.name + '» وتحديث مِعيار.'
+        : 'تم تسجيل المعاملة في Google Sheets، لكن لم يتم تأكيد مزامنة سجل الالتزامات. المرجع المحفوظ سيمنع تكرارها عند المراجعة.',
+      7000
+    );
+  } catch (error) {
+    console.error('تعذر تسجيل الاستحقاق المتكرر:', error);
+    await loadDataFromGoogle({ renderAfter: false });
+    render();
+    alert('لم أتمكن من تأكيد تسجيل الاستحقاق. لم تعاود الضغط مباشرة؛ حدّث بيانات Google Sheets أولًا، لأن المرجع الفريد سيُستخدم للتحقق مما إذا كان الصف قد وصل بالفعل.' +
+      (error && error.message ? '\nالتفاصيل: ' + String(error.message).slice(0, 250) : ''));
+  } finally {
+    recurringGenerationInFlight.delete(key);
+  }
+}
+
 
 let editingTransfer = null;
 let transferInFlight = false;
@@ -1448,6 +2000,15 @@ $('#formTx').addEventListener('submit', async e => {
   let notesForGoogle = String(d.note || d.name || '').trim();
   if (wasEditing && !noteChanged && !nameChanged) notesForGoogle = previousGoogleNotes || notesForGoogle;
   else if (wasEditing && !noteChanged && nameChanged) notesForGoogle = String(d.name || d.note || '').trim();
+  if (wasEditing && (oldTx.recurringId || oldTx.recurringDate || parseRecurringCloudNote(previousGoogleNotes))) {
+    const recurringMeta = parseRecurringCloudNote(previousGoogleNotes);
+    const recurringDate = oldTx.recurringDate || (recurringMeta && recurringMeta.date) || oldTx.date;
+    const recurringRef = oldTx.recurringId || (recurringMeta && recurringMeta.id);
+    notesForGoogle = makeRecurringCloudNote(
+      recurringRef, recurringDate, String(d.name || oldTx.name || 'التزام دوري'),
+      String(d.note !== undefined ? d.note : ((recurringMeta && recurringMeta.note) || oldTx.note || ''))
+    );
+  }
   const assetCode = String(d.code || defaultAssetCode(d.type) || '').trim();
   Object.assign(t, { date: d.date, name: d.name, type: d.type, cat: d.cat, amt: +d.amt, fee: +d.fee || 0, acc: d.acc, pay: d.pay, code: assetCode, qty: d.qty === '' ? '' : +d.qty, price: d.price === '' ? '' : +d.price, note: d.note || '', googleNotes: notesForGoogle, cur: d.cur || 'EGP', sub: t.sub || '' });
   const ids = {};
@@ -1530,6 +2091,19 @@ document.addEventListener('click', e => {
   if (tab) { S.ui.tab = tab.dataset.tab; save(); render(); return; }
   if (e.target.closest('#btnAddTx')) { openTx(); return; }
   if (e.target.closest('#btnAddTransfer')) { openTransfer(); return; }
+  if (e.target.closest('#btnAddRecurring') || e.target.closest('#btnAddRecurringEmpty')) { openRecurringModal(); return; }
+  const editRecurringBtn = e.target.closest('[data-edit-recurring]');
+  if (editRecurringBtn) { openRecurringModal(editRecurringBtn.dataset.editRecurring); return; }
+  const toggleRecurringBtn = e.target.closest('[data-toggle-recurring]');
+  if (toggleRecurringBtn) {
+    toggleRecurringSchedule(toggleRecurringBtn.dataset.toggleRecurring, toggleRecurringBtn.dataset.active === '1');
+    return;
+  }
+  const generateRecurringBtn = e.target.closest('[data-generate-occurrence]');
+  if (generateRecurringBtn) {
+    generateRecurringOccurrence(generateRecurringBtn.dataset.generateOccurrence, generateRecurringBtn.dataset.dueDate);
+    return;
+  }
   if (e.target.closest('#btnSyncSettings')) { saveSharedSettingsToGoogle({ manual: true }); return; }
   if (e.target.closest('#btnReloadCloud')) { loadSharedSettingsFromGoogle().then(() => render()); return; }
   if (e.target.closest('#btnSyncTxDetails')) { syncExistingTransactionDetailsToGoogle(); return; }
@@ -1587,6 +2161,10 @@ document.addEventListener('click', e => {
 
 document.addEventListener('change', e => {
   const x = e.target;
+  if (x.id === 'recType') {
+    populateRecurringCategories(x.value, x.value === 'دخل' ? 'دخل' : 'الأساسيات');
+    return;
+  }
   if (x.id === 'fy') { S.ui.y = +x.value; save(); render(); return; }
   if (x.id === 'fm') { S.ui.m = x.value; save(); render(); return; }
   if (x.dataset.s) { const r = S[x.dataset.s][x.dataset.i]; const k = x.dataset.k; r[k] = x.type === 'checkbox' ? (x.checked ? 1 : 0) : x.type === 'number' ? +x.value : x.value; if (x.dataset.s === 'prices' && k === 'price' && !r.date) r.date = localISODate(); save(); if (x.dataset.s === 'accounts' || x.dataset.s === 'prices') scheduleSharedSettingsSync(); render(); return; }
@@ -1661,6 +2239,7 @@ render();
   await loadSharedSettingsFromGoogle({ renderAfter: false });
   await loadDataFromGoogle({ renderAfter: false });
   render();
+  checkRecurringReminders();
 
   // A one-time, dismissible reminder. Detailed sync status remains in Settings.
   if (!cloudSettingsInitialized) {
@@ -1677,4 +2256,5 @@ setInterval(async () => {
   await loadSharedSettingsFromGoogle({ renderAfter: false });
   await loadDataFromGoogle({ renderAfter: false });
   render();
+  checkRecurringReminders();
 }, SHARED_SYNC_INTERVAL_MS);

@@ -28,7 +28,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link href="css/style.css?v=20261028-finance1" rel="stylesheet">
+  <link href="css/style.css?v=20261028-recurring1" rel="stylesheet">
 </head>
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow-sm">
@@ -44,6 +44,7 @@
         <ul class="navbar-nav me-auto mb-2 mb-lg-0 gap-1" id="navTabs">
           <li class="nav-item"><button class="nav-link active" data-tab="dash"><i class="bi bi-speedometer2"></i> لوحة التحكم</button></li>
           <li class="nav-item"><button class="nav-link" data-tab="tx"><i class="bi bi-receipt"></i> المعاملات</button></li>
+          <li class="nav-item"><button class="nav-link" data-tab="rec"><i class="bi bi-calendar2-week"></i> الالتزامات</button></li>
           <li class="nav-item"><button class="nav-link" data-tab="acc"><i class="bi bi-wallet2"></i> الحسابات</button></li>
           <li class="nav-item"><button class="nav-link" data-tab="ast"><i class="bi bi-graph-up-arrow"></i> الأصول والأسعار</button></li>
           <li class="nav-item"><button class="nav-link" data-tab="set"><i class="bi bi-gear"></i> الإعدادات</button></li>
@@ -224,6 +225,101 @@
     </div>
   </div>
 
+  <div class="modal fade" id="modalRecurring" tabindex="-1" aria-labelledby="modalRecurringTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="modalRecurringTitle">التزام متكرر جديد</h5>
+            <p class="note mb-0 mt-1">سجله مرة واحدة، ومِعيار هيفكرك بموعده كل شهر.</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+        </div>
+        <form id="formRecurring" class="tx-modal-form recurring-modal-form">
+          <input type="hidden" name="id" id="recId">
+          <div class="modal-body">
+            <div class="row g-3">
+              <div class="col-12 col-md-8">
+                <label class="form-label" for="recName">اسم الالتزام</label>
+                <input type="text" class="form-control" name="name" id="recName" maxlength="100" placeholder="مثال: إيجار الشقة أو مرتب الشهر" required>
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="recType">نوع الحركة</label>
+                <select class="form-select" name="type" id="recType" required>
+                  <option value="مصروف">مصروف دوري</option>
+                  <option value="دخل">دخل دوري</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-4">
+                <label class="form-label" for="recAmount">المبلغ</label>
+                <input type="number" class="form-control" name="amount" id="recAmount" min="0.01" step="any" inputmode="decimal" placeholder="0.00" required>
+              </div>
+              <div class="col-6 col-md-4">
+                <label class="form-label" for="recCurrency">العملة</label>
+                <select class="form-select" name="cur" id="recCurrency">
+                  <option value="EGP">جنيه مصري (EGP)</option>
+                  <option value="SAR">ريال سعودي (SAR)</option>
+                  <option value="USD">دولار أمريكي (USD)</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-4">
+                <label class="form-label" for="recFee">رسوم ثابتة (اختياري)</label>
+                <input type="number" class="form-control" name="fee" id="recFee" min="0" step="any" inputmode="decimal" value="0">
+              </div>
+              <div class="col-6 col-md-6">
+                <label class="form-label" for="recCategory">التصنيف</label>
+                <select class="form-select" name="cat" id="recCategory" required></select>
+              </div>
+              <div class="col-6 col-md-6">
+                <label class="form-label" for="recAccount">الحساب</label>
+                <select class="form-select" name="acc" id="recAccount" required></select>
+              </div>
+              <div class="col-6 col-md-6">
+                <label class="form-label" for="recPayment">طريقة الدفع</label>
+                <select class="form-select" name="pay" id="recPayment"></select>
+              </div>
+              <div class="col-6 col-md-6">
+                <label class="form-label" for="recStartDate">بداية الالتزام</label>
+                <input type="date" class="form-control" name="startDate" id="recStartDate" required>
+              </div>
+              <div class="col-6 col-md-6">
+                <label class="form-label" for="recDueDay">يوم الاستحقاق من كل شهر</label>
+                <input type="number" class="form-control" name="dueDay" id="recDueDay" min="1" max="31" step="1" required>
+                <small class="note">لو الشهر أقصر من اليوم المحدد، هيستخدم آخر يوم فيه.</small>
+              </div>
+              <div class="col-6 col-md-6">
+                <label class="form-label" for="recReminderDays">التنبيه قبل الموعد</label>
+                <select class="form-select" name="reminderDays" id="recReminderDays">
+                  <option value="0">يوم الاستحقاق فقط</option>
+                  <option value="1">قبلها بيوم</option>
+                  <option value="3" selected>قبلها بـ 3 أيام</option>
+                  <option value="5">قبلها بـ 5 أيام</option>
+                  <option value="7">قبلها بأسبوع</option>
+                  <option value="14">قبلها بأسبوعين</option>
+                  <option value="30">قبلها بشهر</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="recNote">ملاحظات (اختياري)</label>
+                <input type="text" class="form-control" name="note" id="recNote" maxlength="300" placeholder="تفاصيل تساعدك تفتكر الالتزام">
+              </div>
+              <div class="col-12">
+                <div class="fx-preview">
+                  <strong><i class="bi bi-arrow-repeat"></i> التكرار شهري</strong>
+                  <div class="note mt-1">مِعيار مش هيسجل معاملة تلقائيًا. عند الاستحقاق هيرسل تنبيه، وبعد مراجعتك هتقدر تؤكد تسجيلها مرة واحدة.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+            <button type="submit" class="btn btn-primary" id="btnSaveRecurring"><i class="bi bi-check-lg"></i> حفظ الالتزام</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade" id="modalAcc" tabindex="-1">
     <div class="modal-dialog">
       <div class="modal-content">
@@ -307,6 +403,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="js/app.js?v=20261028-finance1"></script>
+  <script src="js/app.js?v=20261028-recurring1"></script>
 </body>
 </html>
