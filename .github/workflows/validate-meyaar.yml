@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "fix/**"
+      - "finance/**"
   pull_request:
     branches:
       - main
@@ -20,3 +21,5 @@ jobs:
           node-version: 20
       - name: Check JavaScript syntax
         run: node --check Meyaar-main/Meyar/js/app.js
+      - name: Test financial calculations
+        run: node tests/financial-core.test.cjs
