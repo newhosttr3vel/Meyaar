@@ -111,6 +111,8 @@ assert.equal(api.transferPairIssues(), 1, 'A transfer without its receiving side
 
 const htmlPath = path.join(__dirname, '..', 'Meyaar-main', 'Meyar', 'index.html');
 const html = fs.readFileSync(htmlPath, 'utf8');
+const cssPath = path.join(__dirname, '..', 'Meyaar-main', 'Meyar', 'css', 'style.css');
+const css = fs.readFileSync(cssPath, 'utf8');
 assert.match(html, /id="modalTransfer"/, 'The transfer modal exists');
 assert.match(html, /id="formTransfer" class="tx-modal-form transfer-modal-form"/, 'The transfer form uses the scrolling modal layout');
 assert.match(html, /name="from"/, 'The source account selector is present');
@@ -123,6 +125,18 @@ assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== '
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
 assert.match(html, /style\.css\?v=20261028-recurring1/, 'Updated CSS cache version is active');
 assert.match(html, /app\.js\?v=20261028-recurring1/, 'Updated JS cache version is active');
+assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
+assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
+assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists');
+for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory', 'recAccount', 'recStartDate', 'recDueDay', 'recReminderDays']) {
+  assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
+}
+assert.match(html, /style\.css\?v=20261028-recurring1/, 'Recurring CSS cache version is active');
+assert.match(html, /app\.js\?v=20261028-recurring1/, 'Recurring JS cache version is active');
+assert.match(css, /\.recurring-hero/, 'The recurring page has its own visual treatment');
+assert.match(css, /#modalRecurring[\s\S]*?overflow-y:auto/, 'The recurring modal has a mobile scroll layout');
+assert.match(source, /function checkRecurringReminders\(\)/, 'Recurring reminders are checked while the site is open');
+assert.match(source, /async function generateRecurringOccurrence\(scheduleId, dueDate\)/, 'Occurrence generation is implemented');
 
 
 
