@@ -1910,3 +1910,163 @@ code {
     display: none;
   }
 }
+
+
+/* Financial core UX — clear exchange-rate previews and paired transfer feedback */
+.fx-preview {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: .85rem 1rem;
+  color: var(--tx);
+  background: color-mix(in srgb, var(--ac) 5%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--ac) 20%, var(--bd));
+  border-radius: 12px;
+  font-size: .84rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.fx-preview strong {
+  font-weight: 800;
+  color: var(--tx);
+}
+.transfer-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+}
+.transfer-preview-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  min-width: 0;
+  padding: .72rem .8rem;
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  background: var(--card);
+}
+.transfer-preview-grid span {
+  color: var(--mut);
+  font-size: .75rem;
+  font-weight: 700;
+}
+.transfer-preview-grid strong {
+  font-size: 1rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.transfer-preview-grid small {
+  color: var(--mut);
+  font-size: .78rem;
+  font-variant-numeric: tabular-nums;
+}
+.transfer-preview-warning {
+  padding: .65rem .75rem;
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--bd));
+  border-radius: 9px;
+  color: var(--tx);
+  background: color-mix(in srgb, var(--warn) 10%, var(--card));
+  line-height: 1.65;
+  font-size: .82rem;
+}
+#modalTransfer .modal-dialog {
+  max-width: min(760px, calc(100vw - 2rem));
+}
+#modalTransfer .transfer-modal-form .modal-body {
+  min-height: 0;
+}
+#modalTransfer .transfer-modal-form .form-control,
+#modalTransfer .transfer-modal-form .form-select {
+  min-width: 0;
+}
+#modalTransfer #btnSaveTransfer:disabled {
+  opacity: .75;
+  cursor: wait;
+}
+@media (max-width: 575.98px) {
+  #modalTransfer {
+    padding: 0 !important;
+    overflow: hidden;
+  }
+  #modalTransfer .modal-dialog,
+  #modalTransfer .modal-dialog.modal-lg,
+  #modalTransfer .modal-dialog.modal-dialog-scrollable {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+  }
+  #modalTransfer .modal-content {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 0;
+  }
+  #modalTransfer .modal-header {
+    flex: 0 0 auto;
+  }
+  #modalTransfer .transfer-modal-form {
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto;
+    overflow: hidden;
+  }
+  #modalTransfer .transfer-modal-form .modal-body {
+    flex: 1 1 0;
+    min-height: 0;
+    max-height: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: .85rem .9rem 1.15rem;
+  }
+  #modalTransfer .transfer-modal-form .modal-body .row {
+    --bs-gutter-x: .65rem;
+    --bs-gutter-y: .7rem;
+  }
+  #modalTransfer .transfer-modal-form .modal-footer {
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 2;
+    display: flex;
+    gap: .65rem;
+    padding: .65rem .85rem calc(.65rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--bd);
+    background: var(--card);
+    box-shadow: 0 -6px 20px rgba(15, 23, 42, .08);
+  }
+  #modalTransfer .transfer-modal-form .modal-footer .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 46px;
+  }
+  .fx-preview {
+    padding: .75rem .8rem;
+    font-size: .81rem;
+  }
+  .transfer-preview-grid {
+    gap: .45rem;
+  }
+  .transfer-preview-grid > div {
+    padding: .62rem .55rem;
+  }
+  .transfer-preview-grid strong {
+    font-size: .9rem;
+  }
+}
+@media (max-width: 360px) {
+  .transfer-preview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
