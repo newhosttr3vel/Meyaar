@@ -81,19 +81,19 @@ const expectedSheetHeaders = [
 ];
 assert.match(source, /const KEY = 'fin_dash_pro_v2';/,
   'The existing local storage key remains stable during structural refactoring');
-const headerBlock = appsScriptDoc.match(/HEADERS:\\s*\\[([\\s\\S]*?)\\]/);
+const headerBlock = appsScriptDoc.match(/HEADERS:\s*\[([\s\S]*?)\]/);
 assert.ok(headerBlock, 'The documented Google Sheets header contract exists');
 const documentedSheetHeaders = [...headerBlock[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
 assert.deepEqual(documentedSheetHeaders, expectedSheetHeaders,
   'Google Sheets columns A:L keep their established names and order');
-assert.match(appsScriptDoc, /COLUMN_COUNT:\\s*12/,
+assert.match(appsScriptDoc, /COLUMN_COUNT:\s*12/,
   'The Google Sheets schema remains exactly 12 columns (A:L)');
 const saveStart = source.indexOf('async function saveTransactionToGoogle(tx)');
 const saveEnd = source.indexOf('async function syncTransactionDetailsToGoogle(tx)', saveStart);
 assert.ok(saveStart >= 0 && saveEnd > saveStart,
   'The existing Google Sheets transaction writer remains present');
 const saveFunction = source.slice(saveStart, saveEnd);
-const outboundFields = [...saveFunction.matchAll(/^\\s{4}([A-Za-z]+):/gm)].map(match => match[1]);
+const outboundFields = [...saveFunction.matchAll(/^\s{4}([A-Za-z]+):/gm)].map(match => match[1]);
 assert.deepEqual(outboundFields, expectedSheetHeaders,
   'The frontend sends the same transaction fields in the established order');
 
