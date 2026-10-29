@@ -3539,3 +3539,105 @@ body.sidebar-open {
   }
 }
 
+/* Dashboard summary hierarchy: safe-to-spend first, then wealth and allocation. */
+.dashboard-primary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) !important;
+  align-items: stretch;
+  gap: 1rem;
+}
+.dashboard-primary-grid > .dashboard-safe-spend,
+.dashboard-primary-grid > .dashboard-wealth-card {
+  min-width: 0;
+  min-height: 0 !important;
+  height: auto;
+  margin: 0 !important;
+}
+.dashboard-primary-grid > .dashboard-safe-spend {
+  order: 0;
+}
+.dashboard-primary-grid > .dashboard-wealth-card {
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(1rem, 2vw, 1.45rem);
+}
+.dashboard-safe-main {
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+  align-items: stretch;
+}
+.dashboard-safe-main .safe-spend-result {
+  align-content: center;
+  min-height: 100%;
+}
+.dashboard-safe-metrics {
+  align-self: stretch;
+}
+.dashboard-safe-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .65rem;
+}
+.dashboard-safe-facts {
+  justify-content: flex-end;
+}
+.dashboard-wealth-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 1rem;
+}
+.dashboard-wealth-main > .dashboard-wealth-summary {
+  justify-content: flex-start;
+  padding: .1rem .1rem .9rem;
+}
+.dashboard-wealth-card .hero-value {
+  margin-top: .55rem;
+}
+.dashboard-wealth-note {
+  max-width: 52rem;
+  margin-top: .5rem;
+}
+.dashboard-wealth-allocation {
+  width: 100%;
+  padding: 1rem 1.05rem;
+  background: rgba(7, 20, 31, .13);
+}
+.dashboard-wealth-legend {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .55rem;
+}
+.dashboard-wealth-legend .leg-item {
+  min-height: 62px;
+  padding: .6rem .65rem;
+}
+@media (max-width: 767.98px) {
+  .dashboard-primary-grid {
+    gap: .8rem;
+  }
+  .dashboard-safe-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dashboard-safe-bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dashboard-safe-facts {
+    justify-content: flex-start;
+  }
+  .dashboard-wealth-legend {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 575.98px) {
+  .dashboard-wealth-card {
+    padding: .9rem;
+  }
+  .dashboard-wealth-allocation {
+    padding: .75rem;
+  }
+  .dashboard-wealth-legend .leg-item {
+    min-height: 58px;
+    padding: .48rem;
+  }
+}
+
