@@ -2576,9 +2576,43 @@ $('#formPrice').addEventListener('submit', e => {
   save(); scheduleSharedSettingsSync(); bootstrap.Modal.getInstance($('#modalPrice')).hide(); render();
 });
 
+function setSidebarOpen(open) {
+  const sidebar = $('#appSidebar');
+  const backdrop = $('#sidebarBackdrop');
+  const toggle = $('#btnSidebarToggle');
+  if (!sidebar || !backdrop || !toggle) return;
+
+  sidebar.classList.toggle('is-open', Boolean(open));
+  backdrop.hidden = !open;
+  document.body.classList.toggle('sidebar-open', Boolean(open));
+  sidebar.setAttribute('aria-hidden', String(!open));
+  toggle.setAttribute('aria-expanded', String(Boolean(open)));
+  toggle.setAttribute('aria-label', open ? 'القائمة الرئيسية مفتوحة' : 'فتح القائمة الرئيسية');
+
+  const focusTarget = open ? $('#btnSidebarClose') : toggle;
+  if (focusTarget && typeof focusTarget.focus === 'function') {
+    focusTarget.focus({ preventScroll: true });
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('#appSidebar')?.classList.contains('is-open')) {
+    setSidebarOpen(false);
+  }
+});
+
 document.addEventListener('click', e => {
+  if (e.target.closest('#btnSidebarToggle')) {
+    setSidebarOpen(!$('#appSidebar')?.classList.contains('is-open'));
+    return;
+  }
+  if (e.target.closest('#btnSidebarClose') || e.target.closest('#sidebarBackdrop')) {
+    setSidebarOpen(false);
+    return;
+  }
+
   const tab = e.target.closest('[data-tab]');
-  if (tab) { S.ui.tab = tab.dataset.tab; save(); render(); return; }
+  if (tab) { setSidebarOpen(false); S.ui.tab = tab.dataset.tab; save(); render(); return; }
   if (e.target.closest('#btnAddTx')) { openTx(); return; }
   if (e.target.closest('#btnAddTransfer')) { openTransfer(); return; }
   if (e.target.closest('#btnAddGoal') || e.target.closest('#btnAddGoalEmpty')) { openFinancialGoalModal(); return; }
