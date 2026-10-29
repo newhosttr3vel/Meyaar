@@ -1464,28 +1464,35 @@ function st(s) { return s === 'سليم' ? bd(s) : `<span class="tag tag-er">${s
 function fillSelect(el, arr, val) { el.innerHTML = arr.map(x => `<option value="${esc(x)}" ${x === val ? 'selected' : ''}>${esc(x)}</option>`).join(''); }
 
 function vDash(c) {
-  const ys = []; for (let y = 2024; y <= 2035; y++) ys.push(y);
-  const comp = [ ['استثمارات', c.invVal, COL[2]], ['ذهب', c.gold.val, COL[1]], ['سيولة', c.liq, COL[0]], ['ادخار وطوارئ', c.sav, COL[4]] ];
+  const ys = [];
+  for (let y = 2024; y <= 2035; y++) ys.push(y);
+  const comp = [
+    ['استثمارات', c.invVal, COL[2]],
+    ['ذهب', c.gold.val, COL[1]],
+    ['سيولة', c.liq, COL[0]],
+    ['ادخار وطوارئ', c.sav, COL[4]]
+  ];
   const pendingCount = pendingTransactions().length;
-  const cloudWarnings = [];
+  const syncWarnings = [];
   if (!googleTransactionsLoaded) {
-    cloudWarnings.push('لم تكتمل قراءة المعاملات من Google Sheets؛ الأرقام المعروضة قد تكون من ذاكرة هذا الجهاز.');
+    syncWarnings.push('لم تكتمل قراءة المعاملات من Google Sheets؛ قد لا تكون الأرقام محدثة.');
   } else if (pendingCount) {
-    cloudWarnings.push('تم توحيد الحسابات على بيانات Google Sheets. يوجد ' + pendingCount + ' معاملة محلية معلقة لا تدخل في الأرقام المشتركة حتى تراجعها وترفعها من الإعدادات.');
+    syncWarnings.push('يوجد ' + pendingCount + ' معاملة محلية معلقة تحتاج إلى المراجعة والمزامنة.');
   }
-  const cloudBanner = cloudWarnings.length
-    ? '<div class="alert alert-warning small">' + cloudWarnings.join('<br>') + '</div>'
+  if (!cloudSettingsInitialized) {
+    syncWarnings.push('لم يتم تأكيد تحميل الأهداف والالتزامات المشتركة بعد.');
+  }
+  const cloudBanner = syncWarnings.length
+    ? '<div class="dashboard-sync-banner" role="status"><span class="dashboard-sync-icon"><i class="bi bi-cloud-exclamation"></i></span><div><strong>راجع حالة المزامنة</strong><p>' + syncWarnings.map(esc).join(' ') + '</p></div></div>'
     : '';
 
   const safety = safeToSpendSnapshot(localISODate());
-  const safetyWarnings = [];
-  if (!googleTransactionsLoaded) safetyWarnings.push('لم تكتمل قراءة المعاملات من Google Sheets؛ السيولة الحالية قد لا تكون محدثة.');
-  if (!cloudSettingsInitialized) safetyWarnings.push('لم يتم تأكيد تحميل الأهداف والالتزامات المشتركة؛ راجع مزامنة الإعدادات قبل الاعتماد على الرقم.');
-  if (pendingCount) safetyWarnings.push('يوجد ' + pendingCount + ' معاملة محلية معلقة؛ قد تختلف الأرقام عن البيانات المشتركة.');
-  const safetyUncertain = safetyWarnings.length > 0;
+  const safetyUncertain = syncWarnings.length > 0;
   const safetyStatus = safety.safe < 0 ? 'عجز متوقع' : safetyUncertain ? 'تقدير غير مكتمل' : 'تقدير مبدئي';
   const safetyAmount = (safety.safe < 0 ? '−' : '') + f(Math.abs(safety.safe));
-  const safetyObligationRows = safety.obligations.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 4);
+  const safetyObligationRows = safety.obligations.slice()
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .slice(0, 4);
   const safetyObligationList = safetyObligationRows.length
     ? '<div class="safe-spend-obligation-list">' + safetyObligationRows.map(item =>
         '<div class="safe-spend-obligation"><div><strong>' + esc(item.name) + '</strong><span>' +
@@ -1494,14 +1501,15 @@ function vDash(c) {
       ).join('') + (safety.obligations.length > safetyObligationRows.length
         ? '<p class="note mb-0 mt-2">و' + (safety.obligations.length - safetyObligationRows.length) + ' استحقاق إضافي ضمن الحساب.</p>' : '') +
       '</div>'
-    : '<p class="note mb-0">لا توجد التزامات دورية غير مسجلة في الفترة الحالية حسب البيانات المتاحة.</p>';
+    : '<p class="note mb-0 mt-2">لا توجد التزامات دورية غير مسجلة ضمن الفترة المحسوبة حسب البيانات المتاحة.</p>';
+
   const safeSpendPanel = `
-    <section class="safe-spend-panel ${safety.safe < 0 ? 'is-deficit' : ''} mb-3" aria-labelledby="safeSpendTitle">
+    <section class="safe-spend-panel dashboard-safe-spend ${safety.safe < 0 ? 'is-deficit' : ''}" aria-labelledby="safeSpendTitle">
       <div class="safe-spend-header">
         <div class="safe-spend-title">
           <span class="safe-spend-eyebrow"><i class="bi bi-shield-check"></i> قرار مالي أوضح</span>
           <h3 id="safeSpendTitle">المتاح للصرف بأمان</h3>
-          <p>تقدير السيولة التي تبقى بعد حجز الالتزامات الدورية غير المسجلة خلال 30 يومًا، والمتأخرات، والمبالغ المخصصة للأهداف.</p>
+          <p>السيولة التقديرية بعد حجز الالتزامات غير المسجلة خلال 30 يومًا والمتأخرات ومخصصات الأهداف.</p>
         </div>
         <span class="safe-spend-status ${safety.safe < 0 ? 'is-deficit' : safetyUncertain ? 'is-uncertain' : ''}">${safetyStatus}</span>
       </div>
@@ -1509,66 +1517,115 @@ function vDash(c) {
         <div class="safe-spend-result">
           <span>${safety.safe < 0 ? 'العجز المتوقع لتغطية الالتزامات والحجوزات' : 'المبلغ التقديري المتبقي'}</span>
           <strong>${safetyAmount} <small>ج.م.</small></strong>
-          <p>${safety.safe < 0 ? 'المطلوب توفيره لتغطية الالتزامات والمبالغ المحجوزة بالكامل، قبل أي إنفاق إضافي.' : safety.safe === 0 ? 'السيولة الحالية مخصصة بالكامل للالتزامات والأهداف المحجوزة.' : 'هذا تقدير وليس ضمانًا؛ راجع المصروفات الفعلية وغير الدورية قبل قرار الصرف.'}</p>
+          <p>${safety.safe < 0 ? 'هذا هو المبلغ المطلوب لتغطية الفرق قبل أي إنفاق إضافي.' : safety.safe === 0 ? 'السيولة الحالية مخصصة بالكامل للالتزامات والأهداف المحجوزة.' : 'استخدمه كمرجع للتخطيط، وليس كميزانية إنفاق مضمونة.'}</p>
         </div>
         <div class="safe-spend-breakdown">
-          <div class="safe-spend-line"><span><i class="bi bi-wallet2"></i> الأموال المتاحة في الحسابات السائلة</span><strong>${f(safety.available)} ج.م.</strong></div>
-          <div class="safe-spend-line is-deduction"><span><i class="bi bi-calendar2-check"></i> الالتزامات غير المسجلة المستحقة</span><strong>− ${f(safety.commitments)} ج.م.</strong></div>
-          <div class="safe-spend-line is-deduction"><span><i class="bi bi-bullseye"></i> المبالغ المحجوزة للأهداف</span><strong>− ${f(safety.reservedGoals)} ج.م.</strong></div>
-          <div class="safe-spend-equation"><span>السيولة − الالتزامات − حجوزات الأهداف</span><b>${safetyAmount} ج.م.</b></div>
+          <div class="safe-spend-line"><span><i class="bi bi-wallet2"></i> السيولة في الحسابات</span><strong>${f(safety.available)} ج.م.</strong></div>
+          <div class="safe-spend-line is-deduction"><span><i class="bi bi-calendar2-check"></i> الالتزامات غير المسجلة</span><strong>− ${f(safety.commitments)} ج.م.</strong></div>
+          <div class="safe-spend-line is-deduction"><span><i class="bi bi-bullseye"></i> مخصصات الأهداف</span><strong>− ${f(safety.reservedGoals)} ج.م.</strong></div>
+          <div class="safe-spend-equation"><span>المتبقي بعد الحجوزات</span><b>${safetyAmount} ج.م.</b></div>
         </div>
       </div>
-      ${safety.safe < 0
-        ? '<div class="safe-spend-alert is-deficit"><i class="bi bi-exclamation-triangle-fill"></i><div><strong>التزاماتك وحجوزاتك تتجاوز السيولة الحالية بمقدار ' + f(safety.shortfall) + ' ج.م.</strong><p>راجع مواعيد الالتزامات والمبالغ المحجوزة، وقلل المصروفات الاختيارية لحين تغطية الفرق.</p></div></div>'
-        : '<div class="safe-spend-alert"><i class="bi bi-info-circle"></i><div><strong>التغطية المحسوبة لا تشمل المصروفات الطارئة أو الالتزامات التي لم تُسجّل في النظام.</strong><p>خلي هامش أمان للطوارئ، وما تعتبرش كامل المتبقي ميزانية إنفاق إلزامية.</p></div></div>'}
-      ${safetyWarnings.length ? '<div class="safe-spend-alert is-uncertain"><i class="bi bi-cloud-exclamation"></i><div><strong>راجع اكتمال المزامنة</strong><ul class="mb-0 mt-1">' + safetyWarnings.map(message => '<li>' + esc(message) + '</li>').join('') + '</ul></div></div>' : ''}
-      <div class="safe-spend-lower">
-        <div class="safe-spend-facts"><span><b>${safety.overdueCount}</b> التزامات متأخرة غير مسجلة</span><span><b>${safety.upcomingCount}</b> استحقاقات خلال 30 يومًا</span><span><b>${(S.financialGoals || []).filter(goal => goal && goal.active !== false).length}</b> أهداف ضمن الحجز</span></div>
-        <details class="safe-spend-details">
-          <summary>عرض الالتزامات التي تم حجزها</summary>
-          ${safetyObligationList}
-        </details>
+      <div class="safe-spend-alert ${safety.safe < 0 ? 'is-deficit' : ''} dashboard-safe-note">
+        <i class="bi ${safety.safe < 0 ? 'bi-exclamation-triangle-fill' : 'bi-info-circle'}"></i>
+        <div><strong>${safety.safe < 0 ? 'الالتزامات والحجوزات تتجاوز السيولة الحالية.' : 'التقدير لا يشمل المصروفات الطارئة أو الفواتير التي لم تُسجّل.'}</strong><span>${safety.safe < 0 ? 'راجع الالتزامات والمبالغ المخصصة قبل أي إنفاق جديد.' : 'اترك دائمًا هامشًا للطوارئ قبل اتخاذ قرار الصرف.'}</span></div>
       </div>
-      <details class="safe-spend-assumptions">
-        <summary>طريقة الحساب والافتراضات المهمة</summary>
-        <ul>
-          <li>السيولة هي أرصدة الحسابات المعلّمة «ضمن السيولة»، محسوبة من الأرصدة الافتتاحية والمعاملات السليمة حتى تاريخ اليوم، بغض النظر عن فترة التقرير المختارة.</li>
-          <li>يُخصم كل استحقاق مصروف متكرر غير مسجل حتى 30 يومًا قادمًا، وكذلك كل الاستحقاقات السابقة غير المسجلة منذ بداية الجدول. الدخل الدوري لا يُعتبر سيولة مضمونة ولا يدخل في الحساب.</li>
-          <li>الاستحقاق الذي سُجل فعلًا لا يُخصم ثانية إذا كان مرتبطًا بمرجع الالتزام، أو طابق معاملة سليمة في تاريخ الاستحقاق بالحساب والتصنيف والعملة والمبلغ والرسوم نفسها. الدفع المبكر يحتاج ملاحظة تطابق اسم الالتزام أو ملاحظته.</li>
-          <li>المحجوز للأهداف هو الرصيد الحالي لكل هدف نشط، وليس الجزء غير الممول من المبلغ المستهدف. اعتبر هذا الرصيد مالًا ما زال موجودًا داخل السيولة ومخصصًا للهدف؛ لا تُدخل قيمة أصل تم شراؤه بالفعل أو مبلغًا مصروفًا. لا تخصص نفس المبلغ لأكثر من هدف.</li>
-          <li>كل المبالغ المعروضة بالجنيه المصري وباستخدام أسعار مِعيار المتاحة، ولا يشمل التقدير فواتير غير مسجلة أو مصروفات غير دورية أو تغيرات مستقبلية في الدخل والأسعار.</li>
-        </ul>
-      </details>
+      <div class="safe-spend-lower dashboard-safe-lower">
+        <div class="safe-spend-facts">
+          <span><b>${safety.overdueCount}</b> متأخر</span>
+          <span><b>${safety.upcomingCount}</b> خلال 30 يومًا</span>
+          <span><b>${(S.financialGoals || []).filter(goal => goal && goal.active !== false).length}</b> أهداف نشطة</span>
+        </div>
+        <div class="dashboard-safe-details">
+          <details class="safe-spend-details">
+            <summary>الالتزامات المحجوزة (${safety.obligations.length})</summary>
+            ${safetyObligationList}
+          </details>
+          <details class="safe-spend-assumptions">
+            <summary>طريقة الحساب والافتراضات</summary>
+            <ul>
+              <li>السيولة هي أرصدة الحسابات المعلّمة «ضمن السيولة»، محسوبة من الأرصدة الافتتاحية والمعاملات السليمة حتى اليوم، بغض النظر عن فترة التقرير.</li>
+              <li>تُخصم الالتزامات المتكررة غير المسجلة خلال 30 يومًا، وجميع المتأخرات غير المسجلة منذ بداية الجدول. الدخل الدوري لا يُعتبر سيولة مضمونة.</li>
+              <li>الاستحقاق المسجل فعلًا لا يُخصم ثانية إذا ارتبط بمرجع الالتزام أو طابق معاملة سليمة في تاريخ الاستحقاق بالحساب والتصنيف والعملة والمبلغ والرسوم نفسها. الدفع المبكر يحتاج ملاحظة تطابق الالتزام.</li>
+              <li>مخصصات الأهداف هي الأرصدة الحالية للأهداف النشطة، وتُفترض أنها ما زالت موجودة ضمن السيولة. لا تحتسب مبلغًا صُرف أو استُثمر بالفعل، ولا تخصص نفس المال لأكثر من هدف.</li>
+              <li>المبالغ بالجنيه المصري باستخدام أسعار مِعيار المتاحة؛ لا يشمل التقدير فواتير غير مسجلة أو مصروفات غير دورية أو تغيرات مستقبلية في الدخل والأسعار.</li>
+            </ul>
+          </details>
+        </div>
+      </div>
     </section>`;
 
-  return `
-  ${cloudBanner}
-  ${safeSpendPanel}
-  <div class="filter-bar">
-    <select class="form-select form-select-sm" id="fy">${ys.map(y => `<option ${y == S.ui.y ? 'selected' : ''}>${y}</option>`).join('')}</select>
-    <select class="form-select form-select-sm" id="fm"><option value="all">السنة كاملة</option>${MON.map((n, i) => `<option value="${String(i + 1).padStart(2, '0')}" ${S.ui.m === String(i + 1).padStart(2, '0') ? 'selected' : ''}>${n}</option>`).join('')}</select>
-    <span class="note">${c.from} ← ${c.to}</span>
-  </div>
-  <div class="hero-card mb-3">
-    <small class="opacity-75">إجمالي الثروة <span class="badge bg-light text-dark">تقديري عند غياب سعر السوق</span></small>
-    <div class="hero-value">${f(c.wealth)} <small style="font-size:0.4em;font-weight:600">جنيه</small></div>
-    <div class="comp-bar">${comp.map(x => `<i style="width:${c.wealth ? Math.max(x[1], 0) / c.wealth * 100 : 0}%;background:${x[2]}"></i>`).join('')}</div>
-    <div class="d-flex flex-wrap gap-3">${comp.map(x => `<span class="leg-item"><span class="leg-dot" style="background:${x[2]}"></span>${x[0]} ${f(x[1])}</span>`).join('')}</div>
-    <p class="note mt-2 mb-0">الأصول التي لا تتوفر لها كمية أو سعر سوق تظهر بالتكلفة المسجلة كتقدير، وليست تقييمًا سوقيًا حيًا.</p>
-  </div>
-  <div class="row g-3 mb-3">
-    ${[ ['الدخل', c.inc], ['المصروفات', c.exp], ['الرصيد (دخل − مصروف)', c.inc - c.exp], ['معدل الادخار', null, pc(c.sr)], ['الصدقات', c.char], ['قيمة الذهب', c.gold.val], ['قيمة الاستثمار', c.invVal] ].map(([l, v, x]) => `<div class="col-6 col-md-4 col-lg"><div class="kpi-card"><div class="kpi-label">${l}</div><div class="kpi-value">${x || f(v)}</div></div></div>`).join('')}
-  </div>
-  <div class="row g-3">
-    <div class="col-lg-6"><div class="box"><h3><i class="bi bi-bar-chart"></i> الميزانية مقابل الفعلي</h3><div class="chart-wrap"><canvas id="chBudget"></canvas></div></div></div>
-    <div class="col-lg-3 col-md-6"><div class="box"><h3><i class="bi bi-pie-chart"></i> توزيع المصروفات</h3><div class="chart-wrap sm"><canvas id="chExp"></canvas></div></div></div>
-    <div class="col-lg-3 col-md-6"><div class="box"><h3><i class="bi bi-pie-chart-fill"></i> توزيع الأصول</h3><div class="chart-wrap sm"><canvas id="chAst"></canvas></div></div></div>
-    <div class="col-lg-6"><div class="box"><h3><i class="bi bi-graph-up"></i> الدخل والمصروفات — ${c.y}</h3><div class="chart-wrap"><canvas id="chIncExp"></canvas></div></div></div>
-    <div class="col-lg-6"><div class="box"><h3><i class="bi bi-activity"></i> الرصيد المتاح شهرياً (سيولة)</h3><div class="chart-wrap"><canvas id="chBal"></canvas></div></div></div>
-    <div class="col-12"><div class="box"><h3><i class="bi bi-table"></i> تفاصيل الميزانية</h3><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>البند</th><th>النسبة</th><th>الميزانية</th><th>الفعلي</th><th>الاستخدام</th><th>الحالة</th></tr></thead><tbody>${c.bud.map(b => `<tr><td>${b.c}</td><td>${pc(b.pct)}</td><td>${f(b.b)}</td><td>${f(b.a)}</td><td><div class="d-flex align-items-center gap-2"><div class="progress-thin flex-grow-1" style="min-width:80px"><div class="bar" style="width:${Math.min(b.u, 1) * 100}%;background:${b.u >= 1 ? 'var(--red)' : 'var(--ac)'}"></div></div><span>${pc(b.u)}</span></div></td><td>${bd(b.s)}</td></tr>`).join('')}</tbody></table></div><p class="note mt-2 mb-0">أساس الميزانية: ${f(c.base)} ج.م. شراء الذهب غير محسوب في بند الاستثمارات.</p></div></div>
-  </div>`;
-}
+  const net = c.inc - c.exp;
+  const kpis = [
+    { label: 'الدخل', value: f(c.inc), icon: 'bi-arrow-down-left-circle', tone: 'income' },
+    { label: 'المصروفات', value: f(c.exp), icon: 'bi-arrow-up-right-circle', tone: 'expense' },
+    { label: 'صافي الفترة', value: f(net), icon: 'bi-wallet2', tone: net < 0 ? 'negative' : 'net' },
+    { label: 'معدل الادخار', value: pc(c.sr), icon: 'bi-piggy-bank', tone: 'savings' }
+  ];
 
+  return `
+  <section class="dashboard-header" aria-labelledby="dashboardTitle">
+    <div class="dashboard-intro">
+      <span class="dashboard-eyebrow">نظرة مالية عامة</span>
+      <h2 id="dashboardTitle">لوحة التحكم</h2>
+      <p>ملخص وضعك المالي، وأهم مؤشرات الفترة، من غير تفاصيل تزاحم الصورة الأساسية.</p>
+    </div>
+    <div class="dashboard-filters" aria-label="فترة التقرير">
+      <label><span>السنة</span><select class="form-select form-select-sm" id="fy">${ys.map(y => `<option ${y == S.ui.y ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
+      <label><span>الشهر</span><select class="form-select form-select-sm" id="fm"><option value="all">السنة كاملة</option>${MON.map((n, i) => `<option value="${String(i + 1).padStart(2, '0')}" ${S.ui.m === String(i + 1).padStart(2, '0') ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <span class="dashboard-range">${c.from} ← ${c.to}</span>
+    </div>
+  </section>
+  ${cloudBanner}
+
+  <section class="hero-card dashboard-wealth-card mb-4" aria-label="ملخص الثروة">
+    <div class="dashboard-wealth-main">
+      <div>
+        <span class="dashboard-wealth-label"><i class="bi bi-gem"></i> إجمالي الثروة</span>
+        <div class="hero-value">${f(c.wealth)} <small>جنيه مصري</small></div>
+        <p class="dashboard-wealth-note mb-0">تقدير للأصول والسيولة، وقد يعتمد على التكلفة المسجلة عند غياب سعر السوق.</p>
+      </div>
+      <div class="dashboard-wealth-allocation">
+        <span class="dashboard-allocation-label">توزيع الثروة</span>
+        <div class="comp-bar" aria-label="توزيع تقريبي للثروة">${comp.map(x => `<i style="width:${c.wealth > 0 ? Math.max(x[1], 0) / c.wealth * 100 : 0}%;background:${x[2]}"></i>`).join('')}</div>
+        <div class="dashboard-wealth-legend">${comp.map(x => `<span class="leg-item"><span class="leg-dot" style="background:${x[2]}"></span><span>${x[0]}</span><b>${f(x[1])}</b></span>`).join('')}</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="dashboard-kpis-section mb-4" aria-labelledby="dashboardKpiTitle">
+    <div class="dashboard-section-heading">
+      <div><h3 id="dashboardKpiTitle">ملخص الفترة</h3><p>أربعة أرقام أساسية تساعدك تقرأ وضعك بسرعة.</p></div>
+      <span class="dashboard-section-period">${S.ui.m === 'all' ? 'السنة كاملة' : MON[Number(S.ui.m) - 1] + ' ' + S.ui.y}</span>
+    </div>
+    <div class="row g-3 dashboard-kpi-grid">
+      ${kpis.map(k => `<div class="col-6 col-lg-3"><article class="dashboard-kpi-card ${k.tone}"><div class="dashboard-kpi-top"><span class="dashboard-kpi-icon"><i class="bi ${k.icon}"></i></span><span class="dashboard-kpi-label">${k.label}</span></div><strong class="dashboard-kpi-value">${k.value}</strong></article></div>`).join('')}
+    </div>
+  </section>
+
+  ${safeSpendPanel}
+
+  <section class="dashboard-analytics mt-4" aria-labelledby="dashboardAnalyticsTitle">
+    <div class="dashboard-section-heading">
+      <div><h3 id="dashboardAnalyticsTitle">متابعة الأداء</h3><p>الرسوم الأهم في الواجهة، والتفاصيل الإضافية عند الحاجة.</p></div>
+    </div>
+    <div class="row g-3 dashboard-chart-grid">
+      <div class="col-lg-7"><article class="box dashboard-chart-card"><h3><i class="bi bi-bar-chart"></i> الميزانية مقابل الفعلي</h3><div class="chart-wrap"><canvas id="chBudget"></canvas></div></article></div>
+      <div class="col-lg-5"><article class="box dashboard-chart-card"><h3><i class="bi bi-graph-up"></i> الدخل والمصروفات · ${c.y}</h3><div class="chart-wrap"><canvas id="chIncExp"></canvas></div></article></div>
+    </div>
+    <details class="dashboard-more" id="dashboardMoreDetails">
+      <summary><span class="dashboard-more-icon"><i class="bi bi-sliders"></i></span><span class="dashboard-more-label"><strong>تحليلات إضافية وتفاصيل الميزانية</strong><small>توزيع المصروفات والأصول والسيولة، مع الجدول الكامل</small></span><i class="bi bi-chevron-down dashboard-more-chevron"></i></summary>
+      <div class="dashboard-more-content">
+        <div class="row g-3">
+          <div class="col-lg-6"><article class="box dashboard-chart-card"><h3><i class="bi bi-pie-chart"></i> توزيع المصروفات</h3><div class="chart-wrap sm"><canvas id="chExp"></canvas></div></article></div>
+          <div class="col-lg-6"><article class="box dashboard-chart-card"><h3><i class="bi bi-pie-chart-fill"></i> توزيع الأصول</h3><div class="chart-wrap sm"><canvas id="chAst"></canvas></div></article></div>
+          <div class="col-12"><article class="box dashboard-chart-card"><h3><i class="bi bi-activity"></i> الرصيد المتاح شهريًا · السيولة</h3><div class="chart-wrap"><canvas id="chBal"></canvas></div></article></div>
+          <div class="col-12"><article class="box dashboard-budget-table"><h3><i class="bi bi-table"></i> تفاصيل الميزانية</h3><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>البند</th><th>النسبة</th><th>الميزانية</th><th>الفعلي</th><th>الاستخدام</th><th>الحالة</th></tr></thead><tbody>${c.bud.map(b => `<tr><td>${b.c}</td><td>${pc(b.pct)}</td><td>${f(b.b)}</td><td>${f(b.a)}</td><td><div class="d-flex align-items-center gap-2"><div class="progress-thin flex-grow-1" style="min-width:80px"><div class="bar" style="width:${Math.min(b.u, 1) * 100}%;background:${b.u >= 1 ? 'var(--red)' : 'var(--ac)'}"></div></div><span>${pc(b.u)}</span></div></td><td>${bd(b.s)}</td></tr>`).join('')}</tbody></table></div><p class="note mt-2 mb-0">أساس الميزانية: ${f(c.base)} ج.م. شراء الذهب غير محسوب في بند الاستثمارات.</p></article></div>
+        </div>
+      </div>
+    </details>
+  </section>`;
+}
 function vTx(c) {
   const q = (S.ui.q || '').trim().toLowerCase();
   const rows = [...S.tx].sort((a, b) => b.date.localeCompare(a.date)).filter(t => !q || JSON.stringify(t).toLowerCase().includes(q));
