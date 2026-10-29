@@ -925,7 +925,7 @@ function seed() {
     pendingRecurringScheduleIds: [],
     financialGoals: [],
     pendingFinancialGoalIds: [],
-    incomeSources: []
+    incomeSources: [],
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
     warn: 0.9,
     accounts: [
