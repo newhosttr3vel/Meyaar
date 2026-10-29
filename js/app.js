@@ -3648,10 +3648,11 @@ document.addEventListener('submit', async event => {
     category: data.category, priority: data.priority, status: existing ? existing.status : 'todo',
     note: data.note, createdAt: existing ? existing.createdAt : now, updatedAt: now
   };
-  const next = existing
-    ? (S.plannerTasks || []).map(item => item.id === existing.id ? task : item)
-    : [...(S.plannerTasks || []), task];
-  await persistPlannerTasks(next, existing ? 'تم تعديل المهمة.' : 'تمت إضافة المهمة.');
+  await persistPlannerTask(
+    task,
+    existing ? existing.updatedAt : '',
+    existing ? 'تم تعديل المهمة.' : 'تمت إضافة المهمة.'
+  );
   if (S.ui.plannerDate !== task.date) {
     S.ui.plannerDate = task.date;
     save();
@@ -3686,13 +3687,9 @@ document.addEventListener('click', async event => {
     render(); return;
   }
   if (event.target.closest('#btnPlannerSync')) {
-    if (!cloudSettingsInitialized || !cloudPlannerSupported) {
-      showAppToast('خدمة Google الحالية لا تؤكد دعم مزامنة المهام. حدّث Apps Script وانشره أولًا.', 5000);
-      return;
-    }
-    const synced = await saveSharedSettingsToGoogle({ manual: true });
-    showAppToast(synced ? 'تمت مزامنة المهام.' : 'لم تؤكد Google المزامنة. احتفظ بالتغييرات محليًا وراجع الإعدادات.', 4500);
-    render(); return;
+    await loadPlannerTasksFromGoogle({ renderAfter: false, manual: true });
+    render();
+    return;
   }
   const edit = event.target.closest('[data-planner-edit]');
   if (edit) {
@@ -3705,9 +3702,11 @@ document.addEventListener('click', async event => {
     if (!plannerCanEdit()) return;
     const task = (S.plannerTasks || []).find(item => item.id === toggle.dataset.plannerToggle);
     if (!task) return;
-    await persistPlannerTasks((S.plannerTasks || []).map(item =>
-      item.id === task.id ? { ...item, status: item.status === 'done' ? 'todo' : 'done', updatedAt: new Date().toISOString() } : item
-    ), task.status === 'done' ? 'تمت إعادة فتح المهمة.' : 'تم إنجاز المهمة.');
+    await persistPlannerTask(
+      { ...task, status: task.status === 'done' ? 'todo' : 'done', updatedAt: new Date().toISOString() },
+      task.updatedAt,
+      task.status === 'done' ? 'تمت إعادة فتح المهمة.' : 'تم إنجاز المهمة.'
+    );
     return;
   }
   const remove = event.target.closest('[data-planner-delete]');
@@ -3715,6 +3714,6 @@ document.addEventListener('click', async event => {
     if (!plannerCanEdit()) return;
     const task = (S.plannerTasks || []).find(item => item.id === remove.dataset.plannerDelete);
     if (!task || !confirm('حذف المهمة «' + task.title + '»؟ لن يتغير أي سجل مالي.')) return;
-    await persistPlannerTasks((S.plannerTasks || []).filter(item => item.id !== task.id), 'تم حذف المهمة.');
+    await persistPlannerTaskDeletion(task, 'تم حذف المهمة.');
   }
 });
