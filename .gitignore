@@ -1,0 +1,18 @@
+# Node / local test artifacts
+node_modules/
+coverage/
+*.log
+
+# Operating systems / editors
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Local secrets and environment files (not used by the static frontend)
+.env
+.env.*
+!.env.example
+
+# Temporary backups
+*.bak
+*.tmp

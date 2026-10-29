@@ -1,16 +1,21 @@
-name: Validate Meyaar JavaScript
+name: Validate Meyaar
 
 on:
   push:
     branches:
+      - main
+      - "feature/**"
+      - "refactor/**"
       - "fix/**"
       - "finance/**"
+      - "design/**"
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
-  syntax:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -19,7 +24,5 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Check JavaScript syntax
-        run: node --check Meyaar-main/Meyar/js/app.js
-      - name: Test financial calculations
-        run: node tests/financial-core.test.cjs
+      - name: Validate syntax and financial regression tests
+        run: npm run validate

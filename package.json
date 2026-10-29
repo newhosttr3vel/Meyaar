@@ -1,0 +1,14 @@
+{
+  "name": "meyaar-finance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "مِعيار — تطبيق ويب لإدارة الأموال الشخصية",
+  "scripts": {
+    "check:syntax": "node --check js/app.js",
+    "test": "node tests/financial-core.test.cjs",
+    "validate": "npm run check:syntax && npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

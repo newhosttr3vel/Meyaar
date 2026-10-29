@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const appPath = path.join(__dirname, '..', 'Meyaar-main', 'Meyar', 'js', 'app.js');
+const appPath = path.join(__dirname, '..', 'js', 'app.js');
 const source = fs.readFileSync(appPath, 'utf8');
 const marker = '\nconst charts = {};';
 const cutAt = source.indexOf(marker);
@@ -117,10 +117,16 @@ api.calc();
 assert.equal(api.transferPairIssues(), 1, 'A transfer without its receiving side is flagged for audit');
 
 
-const htmlPath = path.join(__dirname, '..', 'Meyaar-main', 'Meyar', 'index.html');
+const htmlPath = path.join(__dirname, '..', 'index.html');
 const html = fs.readFileSync(htmlPath, 'utf8');
-const cssPath = path.join(__dirname, '..', 'Meyaar-main', 'Meyar', 'css', 'style.css');
+const cssPath = path.join(__dirname, '..', 'css', 'style.css');
 const css = fs.readFileSync(cssPath, 'utf8');
+const legacyHtmlPath = path.join(__dirname, '..', 'Meyaar-main', 'Meyar', 'index.html');
+const legacyHtml = fs.readFileSync(legacyHtmlPath, 'utf8');
+assert.match(html, /rel="canonical" href="https:\/\/newhosttr3vel\.github\.io\/Meyaar\//, 'Root app declares the canonical GitHub Pages URL');
+assert.match(html, /og:image" content="https:\/\/newhosttr3vel\.github\.io\/Meyaar\/assets\/meyaar-social\.png"/, 'Social preview image points to the root assets directory');
+assert.match(legacyHtml, /location\.replace\('\.\.\/\.'/,
+  'The previous deployed URL redirects to the root app');
 assert.match(html, /id="modalTransfer"/, 'The transfer modal exists');
 assert.match(html, /id="formTransfer" class="tx-modal-form transfer-modal-form"/, 'The transfer form uses the scrolling modal layout');
 assert.match(html, /name="from"/, 'The source account selector is present');
@@ -131,16 +137,16 @@ assert.match(html, /id="txFxPreview"/, 'The transaction FX preview is visible to
 assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal opener exists');
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
-assert.match(html, /style\.css\?v=20261029-income1/, 'Updated CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-income1/, 'Updated JS cache version is active');
+assert.match(html, /style\.css\?v=20261029-structure1/, 'Updated CSS cache version is active');
+assert.match(html, /app\.js\?v=20261029-structure1/, 'Updated JS cache version is active');
 assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
 assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
 assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists');
 for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory', 'recAccount', 'recStartDate', 'recDueDay', 'recReminderDays']) {
   assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
 }
-assert.match(html, /style\.css\?v=20261029-income1/, 'Recurring CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-income1/, 'Recurring JS cache version is active');
+assert.match(html, /style\.css\?v=20261029-structure1/, 'Recurring CSS cache version is active');
+assert.match(html, /app\.js\?v=20261029-structure1/, 'Recurring JS cache version is active');
 assert.match(html, /id="btnSidebarToggle"/, 'The sidebar toggle is present');
 assert.match(html, /id="appSidebar"/, 'The collapsible sidebar is present');
 assert.match(html, /id="sidebarBackdrop"/, 'The sidebar backdrop is present');
