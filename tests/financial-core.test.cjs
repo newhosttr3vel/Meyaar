@@ -137,6 +137,16 @@ for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory
 }
 assert.match(html, /style\.css\?v=20261029-sidebar1/, 'Recurring CSS cache version is active');
 assert.match(html, /app\.js\?v=20261029-sidebar1/, 'Recurring JS cache version is active');
+assert.match(html, /id="btnSidebarToggle"/, 'The sidebar toggle is present');
+assert.match(html, /id="appSidebar"/, 'The collapsible sidebar is present');
+assert.match(html, /id="sidebarBackdrop"/, 'The sidebar backdrop is present');
+for (const tab of ['dash', 'tx', 'rec', 'goal', 'acc', 'ast', 'set', 'aud']) {
+  assert.ok(html.includes('data-tab="' + tab + '"'), 'Sidebar navigation tab ' + tab + ' exists');
+}
+assert.match(source, /function setSidebarOpen\(open\)/, 'Sidebar open and close behavior exists');
+assert.match(source, /e\.key === 'Escape'[\s\S]*?setSidebarOpen\(false\)/, 'Escape closes the sidebar');
+assert.match(css, /#appSidebar #navTabs \.nav-link\.active/, 'Sidebar active navigation styling exists');
+assert.match(css, /body\s*\{\s*padding-bottom:\s*0 !important/s, 'The old mobile bottom navigation spacing is removed');
 assert.match(css, /\.recurring-hero/, 'The recurring page has its own visual treatment');
 assert.match(css, /#modalRecurring[\s\S]*?overflow-y:auto/, 'The recurring modal has a mobile scroll layout');
 assert.match(source, /function checkRecurringReminders\(\)/, 'Recurring reminders are checked while the site is open');
