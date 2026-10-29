@@ -23,8 +23,9 @@ function vDash(c) {
 
   const safety = safeToSpendSnapshot(localISODate());
   const safetyUncertain = syncWarnings.length > 0;
-  const safetyStatus = safetyUncertain ? 'مزامنة غير مكتملة' : 'الرصيد الحالي';
-  const safetyAmount = f(safety.available);
+  const safetyStatus = safetyUncertain ? 'مزامنة غير مكتملة' : 'حسب فترة التقرير';
+  // Use the same calculated liquidity total as the account summary and monthly liquidity chart.
+  const safetyAmount = f(c.liq);
   const safetyObligationRows = safety.obligations.slice()
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
     .slice(0, 4);
@@ -44,7 +45,7 @@ function vDash(c) {
         <div class="safe-spend-title">
           <span class="safe-spend-eyebrow"><i class="bi bi-wallet2"></i> وضعك المالي الحالي</span>
           <h3 id="safeSpendTitle">رصيد السيولة</h3>
-          <p>إجمالي أرصدة حسابات السيولة بعد احتساب المعاملات المسجلة، دون خصم الالتزامات أو مخصصات الأهداف.</p>
+          <p>إجمالي أرصدة حسابات السيولة حتى نهاية الفترة المحددة، بنفس طريقة احتساب رصيد السيولة في الرسم البياني.</p>
         </div>
         <span class="safe-spend-status ${safety.safe < 0 ? 'is-deficit' : safetyUncertain ? 'is-uncertain' : ''}">${safetyStatus}</span>
       </div>
@@ -56,7 +57,7 @@ function vDash(c) {
           <p>الرصيد الإجمالي في الحسابات المصنفة ضمن السيولة.</p>
         </div>
         <div class="dashboard-safe-metrics" aria-label="مكونات تقدير المتاح للصرف">
-          <div class="dashboard-safe-metric"><span>السيولة</span><strong>${f(safety.available)}</strong><small>ج.م.</small></div>
+          <div class="dashboard-safe-metric"><span>إجمالي السيولة</span><strong>${f(c.liq)}</strong><small>ج.م.</small></div>
           <div class="dashboard-safe-metric is-deduction"><span>الالتزامات</span><strong>− ${f(safety.commitments)}</strong><small>ج.م.</small></div>
           <div class="dashboard-safe-metric is-deduction"><span>الأهداف</span><strong>− ${f(safety.reservedGoals)}</strong><small>ج.م.</small></div>
         </div>
