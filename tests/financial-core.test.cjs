@@ -29,6 +29,7 @@ globalThis.__financeTest = {
   seed,
   sharedSettingsPayload,
   mergeSharedSettingsSnapshots,
+  mergeLegacySharedSettingsSnapshots,
   sharedSettingsEqual,
   goalProgress,
   goalMonthsRemaining,
