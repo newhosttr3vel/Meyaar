@@ -104,7 +104,7 @@ assert.match(appsScriptCode, /action === 'state'/,
   'The shared state GET action is supported');
 assert.match(appsScriptCode, /function mergeSharedSettingsState\(/,
   'Backend sync merges changes against the base snapshot');
-assert.match(appsScriptCode, /const SHEET_NAME: 'DB_TRANSACTIONS'/,
+assert.match(appsScriptCode, /SHEET_NAME:\s*'DB_TRANSACTIONS'/,
   'The transaction sheet retains its existing name');
 const saveStart = source.indexOf('async function saveTransactionToGoogle(tx)');
 const saveEnd = source.indexOf('async function syncTransactionDetailsToGoogle(tx)', saveStart);
