@@ -127,16 +127,16 @@ assert.match(html, /id="txFxPreview"/, 'The transaction FX preview is visible to
 assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal opener exists');
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
-assert.match(html, /style\.css\?v=20261029-forest4/, 'Updated CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-forest4/, 'Updated JS cache version is active');
+assert.match(html, /style\.css\?v=20261029-cloudslate5/, 'Updated CSS cache version is active');
+assert.match(html, /app\.js\?v=20261029-cloudslate5/, 'Updated JS cache version is active');
 assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
 assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
 assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists');
 for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory', 'recAccount', 'recStartDate', 'recDueDay', 'recReminderDays']) {
   assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
 }
-assert.match(html, /style\.css\?v=20261029-forest4/, 'Recurring CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-forest4/, 'Recurring JS cache version is active');
+assert.match(html, /style\.css\?v=20261029-cloudslate5/, 'Recurring CSS cache version is active');
+assert.match(html, /app\.js\?v=20261029-cloudslate5/, 'Recurring JS cache version is active');
 assert.match(html, /id="btnSidebarToggle"/, 'The sidebar toggle is present');
 assert.match(html, /id="appSidebar"/, 'The collapsible sidebar is present');
 assert.match(html, /id="sidebarBackdrop"/, 'The sidebar backdrop is present');
@@ -146,14 +146,14 @@ for (const tab of ['dash', 'tx', 'rec', 'goal', 'acc', 'ast', 'set', 'aud']) {
 assert.match(source, /function setSidebarOpen\(open\)/, 'Sidebar open and close behavior exists');
 assert.match(source, /e\.key === 'Escape'[\s\S]*?setSidebarOpen\(false\)/, 'Escape closes the sidebar');
 assert.match(css, /#appSidebar #navTabs \.nav-link\.active/, 'Sidebar active navigation styling exists');
-assert.match(css, /--bg:\s*#f6f5ef/, 'The forest and paper palette has a warm neutral background');
-assert.match(css, /--ac:\s*#547663/, 'The muted forest accent color is present');
-assert.match(css, /--hero-grad:\s*linear-gradient\(125deg, #344a3c/, 'The balanced forest hero gradient is present');
+assert.match(css, /--bg:\s*#f2f5f8/, 'Cloud and slate palette uses a calm cool-neutral background');
+assert.match(css, /--ac:\s*#4f718a/, 'The dusty slate-blue accent color is present');
+assert.match(css, /--hero-grad:\s*linear-gradient\(125deg, #2d4353/, 'The calm blue-slate hero gradient is present');
 assert.match(css, /@keyframes meyaar-view-enter/, 'Smooth view-transition animation is present');
 assert.match(css, /prefers-reduced-motion/, 'Reduced-motion accessibility is respected');
-assert.match(css, /--mut:\s*#68736a/, 'Muted supporting text remains readable on warm light surfaces');
-assert.match(css, /--bg:\s*#171c18/, 'Dark mode uses a softer graphite background');
-assert.match(source, /const COL = \['#6d8a73'/, 'Chart colors match the forest and paper palette');
+assert.match(css, /--mut:\s*#607484/, 'Muted supporting text remains readable on cool light surfaces');
+assert.match(css, /--bg:\s*#161e25/, 'Dark mode uses a soft graphite-blue background');
+assert.match(source, /const COL = \['#6f91a8'/, 'Chart colors match the calm blue-slate palette');
 assert.match(source, /appRoot\.classList\.add\('view-transition'\)/, 'Section navigation triggers a view transition');
 assert.match(css, /body\s*\{\s*padding-bottom:\s*0 !important/s, 'The old mobile bottom navigation spacing is removed');
 assert.match(css, /\.recurring-hero/, 'The recurring page has its own visual treatment');
