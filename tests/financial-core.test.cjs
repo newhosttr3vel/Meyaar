@@ -72,6 +72,48 @@ function makeState(overrides = {}) {
   };
 }
 
+// Transaction safety contract: these checks are offline and never connect to the live Google Sheet.
+const appsScriptDocPath = path.join(__dirname, '..', 'docs', 'GOOGLE_APPS_SCRIPT.md');
+const appsScriptDoc = fs.readFileSync(appsScriptDocPath, 'utf8');
+const expectedSheetHeaders = [
+  'Date', 'Type', 'Amount', 'Category', 'Notes', 'Account',
+  'Payment', 'Currency', 'Fee', 'AssetCode', 'Quantity', 'Price'
+];
+assert.match(source, /const KEY = 'fin_dash_pro_v2';/,
+  'The existing local storage key remains stable during structural refactoring');
+const headerBlock = appsScriptDoc.match(/HEADERS:\\s*\\[([\\s\\S]*?)\\]/);
+assert.ok(headerBlock, 'The documented Google Sheets header contract exists');
+const documentedSheetHeaders = [...headerBlock[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
+assert.deepEqual(documentedSheetHeaders, expectedSheetHeaders,
+  'Google Sheets columns A:L keep their established names and order');
+assert.match(appsScriptDoc, /COLUMN_COUNT:\\s*12/,
+  'The Google Sheets schema remains exactly 12 columns (A:L)');
+const saveStart = source.indexOf('async function saveTransactionToGoogle(tx)');
+const saveEnd = source.indexOf('async function syncTransactionDetailsToGoogle(tx)', saveStart);
+assert.ok(saveStart >= 0 && saveEnd > saveStart,
+  'The existing Google Sheets transaction writer remains present');
+const saveFunction = source.slice(saveStart, saveEnd);
+const outboundFields = [...saveFunction.matchAll(/^\\s{4}([A-Za-z]+):/gm)].map(match => match[1]);
+assert.deepEqual(outboundFields, expectedSheetHeaders,
+  'The frontend sends the same transaction fields in the established order');
+
+const transactionContractFixture = {
+  id: 'TX-LOCK-001', date: '2026-07-15', name: 'معاملة اختبار حماية البيانات',
+  type: 'مصروف', cat: 'الأساسيات', sub: '', amt: 1234.56, fee: 12.34,
+  cur: 'EGP', pay: 'تحويل بنكي', acc: 'BANK', code: '', qty: '', price: '',
+  note: 'ملاحظة يجب أن تبقى كما هي', googleNotes: 'نص العمود Notes الحالي',
+  googleSynced: true, st: 'سليم', fixtureTag: 'keep-me'
+};
+api.setState(makeState({ tx: [transactionContractFixture] }));
+const retainedTransaction = api.getState().tx[0];
+for (const field of [
+  'id', 'date', 'name', 'type', 'cat', 'sub', 'amt', 'fee', 'cur', 'pay',
+  'acc', 'code', 'qty', 'price', 'note', 'googleNotes', 'googleSynced', 'st', 'fixtureTag'
+]) {
+  assert.equal(retainedTransaction[field], transactionContractFixture[field],
+    'State normalization preserves transaction field: ' + field);
+}
+
 // Historical FX: old baseline before the first recorded rate, then effective-dated rates.
 api.setState(makeState());
 assert.equal(api.toEGP(100, 'USD', '2026-01-15'), 4850, 'Baseline rate applies before first historical record');
