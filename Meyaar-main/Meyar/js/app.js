@@ -15,7 +15,7 @@ function isAssetTransaction(type) { return ASSET_TYPES.has(type); }
 function defaultAssetCode(type) { return GOLD_TYPES.has(type) ? GOLD : ''; }
 const PAY = ['نقدي', 'تحويل بنكي', 'بطاقة خصم', 'بطاقة ائتمان', 'ثاندر', 'محفظة إلكترونية', 'أخرى'];
 const MON = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-const COL = ['#6f8f78', '#c7a979', '#8fa8b7', '#c9827a', '#9c90b8', '#729f91', '#c99b77', '#89958a'];
+const COL = ['#6d8a73', '#b9a178', '#8099a0', '#bd8377', '#9992a7', '#719a8f', '#b89a76', '#7b887d'];
 const CURS = { EGP: 'ج.م', SAR: 'ر.س', USD: '$' };
 
 const API_URL = "https://script.google.com/macros/s/AKfycbwJI2_IFB0ukOs1Ufko0wuLob2eAEIFLaPwsglNAeWnMdCUB_7euqWGV4xGzVBH1SflzQ/exec";
