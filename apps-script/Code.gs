@@ -40,6 +40,8 @@ const CONFIG = {
   SETTINGS_SHEET_NAME: 'SYS_APP_SETTINGS',
   SETTINGS_RECORD_KEY: 'MEYAAR_SHARED_STATE_V1',
   SETTINGS_HEADERS: ['Key', 'StateJSON', 'UpdatedAt', 'Revision'],
+  LEGACY_SETTINGS_RECORD_KEY: 'shared_settings_v1',
+  LEGACY_SETTINGS_HEADERS: ['Key', 'Value', 'UpdatedAt'],
 
   // Daily/weekly planner tasks live in their own sheet, separate from transactions and settings.
   TASKS_SHEET_NAME: 'TASKS',
@@ -113,11 +115,25 @@ function getSharedSettingsSheet() {
     return sheet;
   }
 
+  // Backward-compatible, non-destructive header migration from the older 3-column
+  // [Key, Value, UpdatedAt] layout. Existing rows are preserved byte-for-byte.
   if (sheet.getLastColumn() < CONFIG.SETTINGS_HEADERS.length) {
-    throw new Error(
-      'SYS_APP_SETTINGS already exists with an unexpected layout. ' +
-      'No settings or transactions were changed. Review the sheet before migrating it.'
-    );
+    const legacyHeaders = sheet
+      .getRange(1, 1, 1, CONFIG.LEGACY_SETTINGS_HEADERS.length)
+      .getDisplayValues()[0]
+      .map(value => String(value).trim());
+
+    if (!CONFIG.LEGACY_SETTINGS_HEADERS.every((header, index) => legacyHeaders[index] === header)) {
+      throw new Error(
+        'SYS_APP_SETTINGS has an unrecognized layout. ' +
+        'No settings or transactions were changed.'
+      );
+    }
+
+    sheet.getRange(1, 1, 1, CONFIG.SETTINGS_HEADERS.length)
+      .setValues([CONFIG.SETTINGS_HEADERS]);
+    sheet.setFrozenRows(1);
+    return sheet;
   }
 
   const actualHeaders = sheet
@@ -132,13 +148,8 @@ function getSharedSettingsSheet() {
     );
   }
 
-  if (sheet.getLastRow() > 2) {
-    throw new Error(
-      'SYS_APP_SETTINGS contains extra rows beyond its single state record. ' +
-      'No data was overwritten; review the sheet before migration.'
-    );
-  }
-
+  // Additional rows can contain the previous settings record and/or its backup.
+  // Readers and writers below address records by key and never overwrite unrelated rows.
   return sheet;
 }
 
@@ -188,18 +199,39 @@ function sanitizeSharedSettingsState(value) {
 }
 
 function readSharedSettingsRecord(sheet) {
-  if (sheet.getLastRow() < 2) {
-    return { state: null, updatedAt: '', revision: 0 };
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return { state: null, updatedAt: '', revision: 0, rowNumber: 0, recordKey: '' };
   }
 
-  const row = sheet.getRange(2, 1, 1, CONFIG.SETTINGS_HEADERS.length).getValues()[0];
-  const recordKey = String(row[0] || '').trim();
-  const json = String(row[1] || '');
+  const rows = sheet
+    .getRange(2, 1, lastRow - 1, CONFIG.SETTINGS_HEADERS.length)
+    .getValues();
+  const currentMatches = [];
+  const legacyMatches = [];
 
-  if (!recordKey && !json) {
-    return { state: null, updatedAt: '', revision: 0 };
+  rows.forEach((row, index) => {
+    const key = String(row[0] || '').trim();
+    const entry = { row, rowNumber: index + 2 };
+    if (key === CONFIG.SETTINGS_RECORD_KEY) currentMatches.push(entry);
+    else if (key === CONFIG.LEGACY_SETTINGS_RECORD_KEY) legacyMatches.push(entry);
+  });
+
+  if (currentMatches.length > 1) {
+    throw new Error('SYS_APP_SETTINGS has duplicate current state records. No data was changed.');
   }
-  if (recordKey !== CONFIG.SETTINGS_RECORD_KEY || !json) {
+  if (!currentMatches.length && legacyMatches.length > 1) {
+    throw new Error('SYS_APP_SETTINGS has duplicate legacy state records. No data was changed.');
+  }
+
+  // Prefer the current record. Fall back to the previous key while retaining its row
+  // as a recovery copy; the first successful save writes a new current-key row.
+  const match = currentMatches[0] || legacyMatches[0];
+  if (!match) return { state: null, updatedAt: '', revision: 0, rowNumber: 0, recordKey: '' };
+
+  const recordKey = String(match.row[0] || '').trim();
+  const json = String(match.row[1] || '');
+  if (!json) {
     throw new Error('SYS_APP_SETTINGS state row is malformed. No data was changed.');
   }
 
@@ -210,10 +242,16 @@ function readSharedSettingsRecord(sheet) {
     throw new Error('SYS_APP_SETTINGS contains invalid JSON. No data was changed.');
   }
 
+  const updatedAt = match.row[2] instanceof Date
+    ? Utilities.formatDate(match.row[2], Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss')
+    : String(match.row[2] || '');
+
   return {
     state: sanitizeSharedSettingsState(parsed),
-    updatedAt: row[2] ? String(row[2]) : '',
-    revision: Math.max(0, Math.trunc(Number(row[3]) || 0))
+    updatedAt,
+    revision: Math.max(0, Math.trunc(Number(match.row[3]) || 0)),
+    rowNumber: match.rowNumber,
+    recordKey
   };
 }
 
@@ -349,7 +387,12 @@ function saveSharedSettings(data) {
 
   const updatedAt = new Date().toISOString();
   const revision = current.revision + 1;
-  sheet.getRange(2, 1, 1, CONFIG.SETTINGS_HEADERS.length)
+  const targetRow = current.recordKey === CONFIG.SETTINGS_RECORD_KEY && current.rowNumber
+    ? current.rowNumber
+    : Math.max(sheet.getLastRow() + 1, 2);
+
+  // Never overwrite a legacy settings row. A current-key record is written to its own row.
+  sheet.getRange(targetRow, 1, 1, CONFIG.SETTINGS_HEADERS.length)
     .setValues([[CONFIG.SETTINGS_RECORD_KEY, stateJson, updatedAt, revision]]);
 
   return {
