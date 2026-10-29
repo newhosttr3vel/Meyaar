@@ -12,7 +12,8 @@ const sourceModules = [
   'js/modules/30-charts.js',
   'js/modules/40-ui-utilities.js',
   'js/modules/50-views-and-previews.js',
-  'js/modules/60-actions-and-event-handlers.js'
+  'js/modules/60-actions-and-event-handlers.js',
+  'js/modules/70-daily-weekly-planner.js'
 ];
 
 function buildSource() {

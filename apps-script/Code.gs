@@ -42,7 +42,7 @@ const CONFIG = {
   SETTINGS_HEADERS: ['Key', 'StateJSON', 'UpdatedAt', 'Revision'],
   SHARED_STATE_KEYS: [
     'rates', 'baseRates', 'rateHistory', 'recurringSchedules',
-    'generatedOccurrences', 'financialGoals', 'incomeSources',
+    'generatedOccurrences', 'financialGoals', 'incomeSources', 'plannerTasks',
     'budget', 'warn', 'accounts', 'prices'
   ],
   COLLECTION_KEY_PARTS: {
@@ -51,6 +51,7 @@ const CONFIG = {
     generatedOccurrences: ['key'],
     financialGoals: ['id'],
     incomeSources: ['id'],
+    plannerTasks: ['id'],
     accounts: ['code'],
     prices: ['code']
   },
@@ -307,6 +308,7 @@ function getSharedSettingsResponse() {
   return {
     success: true,
     state: record.state,
+    supportedKeys: CONFIG.SHARED_STATE_KEYS.slice(),
     updatedAt: record.updatedAt,
     revision: record.revision
   };

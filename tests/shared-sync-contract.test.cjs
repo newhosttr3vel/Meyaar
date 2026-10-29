@@ -48,6 +48,16 @@ assert.match(syncModule, /expectedRevision:\s*baseRevision/,
   'The frontend sends the revision it last loaded');
 assert.match(syncModule, /mergeSharedSettingsSnapshots\(/,
   'The frontend reconciles remote updates with local pending edits');
+assert.match(domainModule, /plannerTasks:\s*source\.plannerTasks/,
+  'Planner tasks are part of the shared settings payload');
+assert.match(domainModule, /plannerTasks: item => String\(item && item\.id \|\| ''\)/,
+  'Planner tasks merge by stable ID across devices');
+assert.match(appsScript, /plannerTasks: \['id'\]/,
+  'Apps Script merges planner tasks by stable ID');
+assert.match(appsScript, /supportedKeys: CONFIG\.SHARED_STATE_KEYS\.slice\(\)/,
+  'The API advertises support for new shared collections');
+assert.match(syncModule, /plannerChangedInRequest/,
+  'An outdated API cannot silently discard planner edits');
 assert.match(domainModule, /incomeSources:\s*source\.incomeSources/,
   'Income sources are part of the shared settings payload');
 assert.match(domainModule, /function mergeSharedSettingsSnapshots\(/,

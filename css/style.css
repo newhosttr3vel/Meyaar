@@ -4079,3 +4079,64 @@ body.sidebar-open {
   }
 }
 
+
+
+/* Daily and weekly planner */
+.planner-page{display:grid;gap:1rem;min-width:0}
+.planner-hero{display:flex;align-items:center;justify-content:space-between;gap:1.25rem;padding:clamp(1.1rem,2.5vw,1.8rem);border-radius:20px;background:linear-gradient(125deg,#183b4b 0%,#2c6170 58%,#477f87 100%);color:#f8fbfc;box-shadow:0 12px 30px rgba(24,59,75,.12)}
+.planner-hero h2{font-size:clamp(1.35rem,2vw,1.9rem);font-weight:800;margin:.45rem 0}
+.planner-hero p{color:rgba(248,251,252,.78);margin:0;max-width:620px}
+.planner-eyebrow{font-size:.78rem;font-weight:800;letter-spacing:.02em;color:#d7e9e8}
+.planner-week-nav{display:flex;align-items:center;gap:.65rem;flex-shrink:0}
+.planner-week-nav>div{min-width:190px;text-align:center}
+.planner-week-nav strong,.planner-week-nav label{display:block}
+.planner-week-nav label{font-size:.72rem;opacity:.78;margin:.3rem 0}
+.planner-week-nav .form-control{max-width:180px;margin:auto}
+.planner-sync-notice{display:flex;align-items:center;gap:.75rem;padding:.85rem 1rem;border:1px solid #d8e7e5;border-radius:14px;background:#f4faf8;color:#345c58}
+.planner-sync-notice>i{font-size:1.35rem;flex-shrink:0}
+.planner-sync-notice>div{flex:1;min-width:0}
+.planner-sync-notice strong{display:block;font-size:.9rem}
+.planner-sync-notice p{margin:.18rem 0 0;font-size:.8rem;color:#55716e}
+.planner-sync-notice.is-warning{background:#fff8ed;border-color:#ead9b8;color:#795c2d}
+.planner-sync-notice.is-warning p{color:#846f4c}
+.planner-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.8rem}
+.planner-kpis article{padding:1rem 1.1rem;background:var(--card);border:1px solid var(--bd);border-radius:16px;box-shadow:var(--shadow);min-width:0}
+.planner-kpis span,.planner-kpis small{display:block;color:var(--mut);font-size:.8rem}
+.planner-kpis strong{display:block;font-size:clamp(1.2rem,2vw,1.7rem);line-height:1.45;color:var(--tx);margin:.22rem 0}
+.planner-form-panel{padding:clamp(1rem,2vw,1.35rem);border:1px solid var(--bd);border-radius:18px;background:var(--card);box-shadow:var(--shadow)}
+.planner-section-title{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}
+.planner-section-title h3{font-size:1.05rem;font-weight:800;margin:0 0 .25rem}
+.planner-section-title h3 i{color:var(--ac);margin-inline-end:.3rem}
+.planner-section-title p{font-size:.82rem;color:var(--mut);margin:0}
+.planner-week-heading{margin:.35rem 0 0}
+.planner-total-pill{border-radius:999px;padding:.35rem .7rem;background:var(--surface-muted);color:var(--mut);font-size:.8rem;white-space:nowrap}
+.planner-week-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.65rem;align-items:start}
+.planner-day-card{min-width:0;border:1px solid var(--bd);border-radius:15px;background:var(--card);overflow:hidden}
+.planner-day-card.is-today{border-color:color-mix(in srgb,var(--ac) 48%,var(--bd));box-shadow:0 0 0 2px color-mix(in srgb,var(--ac) 8%,transparent)}
+.planner-day-header{display:flex;justify-content:space-between;align-items:center;gap:.3rem;padding:.7rem .65rem;background:var(--surface-muted);border-bottom:1px solid var(--bd)}
+.planner-day-header strong,.planner-day-header span{display:block}
+.planner-day-header strong{font-size:.82rem;color:var(--tx)}
+.planner-day-header div>span{font-size:.72rem;color:var(--mut);margin-top:.15rem}
+.planner-day-count{display:grid;place-items:center;min-width:1.65rem;height:1.65rem;padding:0 .3rem;border-radius:999px;background:var(--card);border:1px solid var(--bd);font-size:.75rem;color:var(--mut)}
+.planner-day-tasks{padding:.45rem;display:grid;gap:.5rem}
+.planner-day-empty{font-size:.75rem;color:var(--mut);text-align:center;padding:1rem .2rem;margin:0}
+.planner-task-card{padding:.65rem .6rem;border:1px solid var(--bd);border-inline-start:3px solid #7898aa;border-radius:11px;background:var(--card);min-width:0}
+.planner-task-card.priority-high{border-inline-start-color:#bd777d}
+.planner-task-card.priority-low{border-inline-start-color:#c1a477}
+.planner-task-card.is-done{opacity:.72;background:var(--surface-muted)}
+.planner-task-card.is-done .planner-task-title{text-decoration:line-through}
+.planner-task-time{display:flex;gap:.25rem;align-items:center;font-size:.7rem;color:var(--mut);font-variant-numeric:tabular-nums;margin-bottom:.35rem}
+.planner-task-title{display:block;font-size:.82rem;line-height:1.5;overflow-wrap:anywhere;color:var(--tx)}
+.planner-task-meta{display:flex;flex-wrap:wrap;gap:.25rem;margin-top:.4rem}
+.planner-task-meta span{font-size:.67rem;border-radius:999px;padding:.12rem .4rem;background:var(--surface-muted);color:var(--mut)}
+.planner-task-card p{font-size:.75rem;color:var(--mut);margin:.45rem 0 0;overflow-wrap:anywhere}
+.planner-task-actions{display:flex;gap:.25rem;flex-wrap:wrap;margin-top:.55rem}
+.planner-task-actions .btn{font-size:.7rem;padding:.2rem .35rem}
+.planner-form-error{color:var(--red);font-size:.85rem;margin:.7rem 0 0}
+[data-theme="dark"] .planner-sync-notice{background:#20342f;border-color:#34554d;color:#b8d9cd}
+[data-theme="dark"] .planner-sync-notice p{color:#a4bdb5}
+[data-theme="dark"] .planner-sync-notice.is-warning{background:#3a3022;border-color:#635039;color:#e3c68d}
+[data-theme="dark"] .planner-sync-notice.is-warning p{color:#d2bc91}
+@media(max-width:1200px){.planner-week-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.planner-day-card:nth-child(n+5){margin-top:.15rem}}
+@media(max-width:768px){.planner-hero{align-items:stretch;flex-direction:column}.planner-week-nav{justify-content:space-between}.planner-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.planner-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.planner-sync-notice{align-items:flex-start;flex-wrap:wrap}.planner-sync-notice>div{flex-basis:calc(100% - 3rem)}}
+@media(max-width:420px){.planner-week-grid{grid-template-columns:minmax(0,1fr)}.planner-day-card{display:grid;grid-template-columns:100px minmax(0,1fr)}.planner-day-header{align-items:flex-start;flex-direction:column;border-bottom:0;border-inline-end:1px solid var(--bd)}.planner-day-tasks{padding:.5rem}.planner-week-nav>div{min-width:0;flex:1}.planner-week-nav strong{font-size:.8rem}.planner-task-actions .btn{font-size:.68rem}}
