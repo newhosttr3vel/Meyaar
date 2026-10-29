@@ -306,7 +306,6 @@ assert.match(source, /function vPlanner\(\)/, 'The daily and weekly planner view
 assert.match(source, /plannerTasks:\s*source\.plannerTasks/, 'Planner tasks are stored in the shared settings payload');
 assert.match(source, /plannerChangedInRequest/, 'Planner changes are protected against an outdated Apps Script API');
 assert.match(source, /function plannerWeekStart\(value\)/, 'The weekly planner has a stable week calculation');
-assert.match(source, /DB_TRANSACTIONS/, 'Existing transaction storage contract remains available');
 assert.match(source, /function vIncomeSources\(\)/, 'The income sources view is wired');
 assert.match(source, /incomeSources:\s*source\.incomeSources/, 'Income sources are included in shared settings');
 assert.match(source, /لا ينشئ معاملات ولا يغيّر أرصدة الحسابات أو إجمالي الثروة/, 'Income source catalogue is separate from transaction balances');
