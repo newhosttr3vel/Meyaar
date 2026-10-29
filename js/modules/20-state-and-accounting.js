@@ -13,6 +13,7 @@ function seed() {
     financialGoals: [],
     pendingFinancialGoalIds: [],
     incomeSources: [],
+    plannerTasks: [],
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
     warn: 0.9,
     accounts: [
@@ -32,7 +33,8 @@ function normalizeState(input) {
   const obj = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const out = { ...base, ...input };
   out.ui = { ...base.ui, ...obj(input.ui) };
-  if (!['dash', 'tx', 'income', 'acc', 'ast', 'set', 'aud', 'rec', 'goal'].includes(out.ui.tab)) out.ui.tab = 'dash';
+  if (!['dash', 'tx', 'income', 'acc', 'ast', 'set', 'aud', 'rec', 'goal', 'plan'].includes(out.ui.tab)) out.ui.tab = 'dash';
+  out.ui.plannerDate = isValidISODate(out.ui.plannerDate) ? out.ui.plannerDate : localISODate();
   out.ui.y = Number.isInteger(Number(out.ui.y)) && Number(out.ui.y) >= 1900 && Number(out.ui.y) <= 2200 ? Number(out.ui.y) : base.ui.y;
   out.ui.m = out.ui.m === 'all' || /^(0[1-9]|1[0-2])$/.test(String(out.ui.m)) ? String(out.ui.m) : 'all';
   out.ui.q = String(out.ui.q || '');
@@ -179,6 +181,30 @@ function normalizeState(input) {
       };
     })
     .filter(item => item.name);
+
+  const plannerTaskIds = new Set();
+  out.plannerTasks = (Array.isArray(input.plannerTasks) ? input.plannerTasks : [])
+    .filter(item => {
+      if (!item || typeof item !== 'object') return false;
+      const id = String(item.id || '').trim();
+      if (!id || plannerTaskIds.has(id)) return false;
+      plannerTaskIds.add(id);
+      return true;
+    })
+    .map(item => ({
+      id: String(item.id),
+      title: String(item.title || '').trim().slice(0, 120),
+      date: isValidISODate(item.date) ? item.date : localISODate(),
+      startTime: /^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(item.startTime || '')) ? String(item.startTime) : '09:00',
+      endTime: /^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(item.endTime || '')) ? String(item.endTime) : '10:00',
+      category: ['عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'].includes(item.category) ? item.category : 'شخصي',
+      priority: ['عالية', 'متوسطة', 'منخفضة'].includes(item.priority) ? item.priority : 'متوسطة',
+      status: ['todo', 'done'].includes(item.status) ? item.status : 'todo',
+      note: String(item.note || '').trim().slice(0, 500),
+      createdAt: String(item.createdAt || ''),
+      updatedAt: String(item.updatedAt || '')
+    }))
+    .filter(item => item.title && item.endTime > item.startTime);
 
   out.budget = { ...base.budget, ...obj(input.budget) };
   CATS.forEach(cat => {
