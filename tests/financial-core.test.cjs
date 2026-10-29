@@ -155,7 +155,7 @@ assert.match(css, /--mut:\s*#66788b/, 'Original muted text color is restored');
 assert.match(css, /--bg:\s*#0a1320/, 'Original dark-mode background is restored');
 assert.match(source, /const COL = \['#0d9488'/, 'Original chart color palette is restored');
 assert.match(source, /appRoot\.classList\.add\('view-transition'\)/, 'Section navigation triggers a view transition');
-assert.match(source, /function vDash\\(c\\)/, 'The dashboard view renderer exists');
+assert.match(source, /function vDash\(c\)/, 'The dashboard view renderer exists');
 assert.match(source, /id="dashboardMoreDetails"/, 'Secondary dashboard analytics are grouped in an expandable section');
 assert.match(source, /dashboard-kpi-grid/, 'The dashboard uses a dedicated concise KPI grid');
 assert.match(source, /dashboard-sync-banner/, 'Cloud sync warnings have a dedicated compact banner');
