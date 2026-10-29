@@ -1,6 +1,4 @@
-/* Daily and weekly planner. Tasks are shared settings, never financial transactions. */
-let plannerSaveInFlight = false;
-let plannerEditingTaskId = '';
+/* Daily and weekly planner. Tasks are stored in the dedicated TASKS sheet, never as financial transactions. */
 
 function plannerWeekStart(value) {
   const date = new Date((isValidISODate(value) ? value : localISODate()) + 'T12:00:00');
@@ -36,17 +34,23 @@ function plannerDurationLabel(minutes) {
 }
 
 function plannerCanEdit() {
-  return Boolean(cloudSettingsInitialized && cloudPlannerSupported && !plannerSaveInFlight);
+  return Boolean(plannerCloudInitialized && cloudPlannerSupported && !plannerSaveInFlight && !plannerLoadInFlight);
 }
 
 function plannerStatusNotice() {
-  if (!cloudSettingsInitialized) {
-    return '<div class="planner-sync-notice is-warning"><i class="bi bi-cloud-exclamation"></i><div><strong>المزامنة غير مؤكدة</strong><p>لم يتم تحميل البيانات المشتركة من Google بعد. افتح الإعدادات وتأكد من اتصال الجهاز قبل إضافة مهام.</p></div></div>';
-  }
   if (!cloudPlannerSupported) {
-    return '<div class="planner-sync-notice is-warning"><i class="bi bi-cloud-slash"></i><div><strong>مطلوب تحديث خدمة المزامنة</strong><p>لا تضف مهامًا حتى يتم نشر إصدار Apps Script الذي يدعم plannerTasks. بياناتك المالية لن تتأثر، لكن التخزين القديم لا يعرف قائمة المهام.</p></div></div>';
+    return '<div class="planner-sync-notice is-warning"><i class="bi bi-cloud-slash"></i><div><strong>تحديث خدمة Google مطلوب</strong><p>' +
+      esc(plannerCloudStatus || 'انشر إصدار Apps Script الداعم لورقة TASKS قبل إضافة أو تعديل أي مهمة.') +
+      '</p></div><button class="btn btn-sm btn-outline-primary" type="button" id="btnPlannerSync">إعادة المحاولة</button></div>';
   }
-  return '<div class="planner-sync-notice"><i class="bi bi-cloud-check"></i><div><strong>قائمة مهام مشتركة بين الكمبيوتر والموبايل</strong><p>أي إضافة أو تعديل أو إنجاز يتزامن مع Google Sheets، ثم يظهر على أجهزتك الأخرى بعد المزامنة.</p></div><button class="btn btn-sm btn-outline-primary" type="button" id="btnPlannerSync">مزامنة الآن</button></div>';
+  if (!plannerCloudInitialized) {
+    return '<div class="planner-sync-notice is-warning"><i class="bi bi-cloud-arrow-down"></i><div><strong>جارٍ تحميل المهام</strong><p>' +
+      esc(plannerCloudStatus || 'بيتم تحميل جدولك من ورقة TASKS.') +
+      '</p></div><button class="btn btn-sm btn-outline-primary" type="button" id="btnPlannerSync">مزامنة الآن</button></div>';
+  }
+  return '<div class="planner-sync-notice"><i class="bi bi-cloud-check"></i><div><strong>المهام محفوظة في TASKS ومشتركة بين أجهزتك</strong><p>آخر تحديث: ' +
+    esc(plannerCloudLastUpdated || 'تم الاتصال') +
+    ' · التعديلات تتزامن من Google Sheets، بعيدًا عن بيانات المعاملات المالية.</p></div><button class="btn btn-sm btn-outline-primary" type="button" id="btnPlannerSync">مزامنة الآن</button></div>';
 }
 
 function vPlanner() {
@@ -122,26 +126,181 @@ function vPlanner() {
     '<div class="planner-week-grid">' + days + '</div></section>';
 }
 
-async function persistPlannerTasks(nextTasks, successMessage) {
-  if (!cloudSettingsInitialized || !cloudPlannerSupported) {
-    showAppToast('المزامنة المشتركة غير جاهزة. لم يتم إرسال التغيير، ولن أسمح بحفظ مهام على جهاز واحد فقط.', 5500);
+
+async function loadPlannerTasksFromGoogle({ renderAfter = true, manual = false } = {}) {
+  if (plannerLoadInFlight) return false;
+  plannerLoadInFlight = true;
+
+  try {
+    const response = await fetch(API_URL + '?action=tasks&_=' + Date.now(), {
+      method: 'GET',
+      cache: 'no-store'
+    });
+    if (!response.ok) throw new Error('Google Sheets HTTP ' + response.status);
+    const result = await response.json();
+
+    if (!result || result.success === false ||
+        !Array.isArray(result.tasks) || !Array.isArray(result.deletedIds)) {
+      throw new Error(
+        'إصدار Apps Script الحالي لا يدعم action=tasks. حدّث apps-script/Code.gs وانشر الإصدار الجديد؛ لم يتم تغيير المعاملات.'
+      );
+    }
+
+    const remoteTasks = normalizeState({ ...S, plannerTasks: result.tasks }).plannerTasks;
+    const remoteIds = new Set(remoteTasks.map(task => String(task.id)));
+    const deletedIds = new Set(result.deletedIds.map(String));
+    const priorBaselineIds = new Set(plannerLegacyBaselineTasks.map(task => String(task && task.id || '')));
+    const localTasks = Array.isArray(S.plannerTasks) ? S.plannerTasks : [];
+
+    // Preserve local-only tasks from the first release, but never resurrect a server
+    // tombstone or re-upload an item that was already part of the prior cloud baseline.
+    const localOnly = localTasks.filter(task =>
+      task && task.id &&
+      !remoteIds.has(String(task.id)) &&
+      !deletedIds.has(String(task.id)) &&
+      !priorBaselineIds.has(String(task.id))
+    );
+
+    const recoveredLocalTasks = [];
+    for (const task of localOnly) {
+      try {
+        const saved = await postGooglePayload({
+          action: 'savetask',
+          task,
+          expectedUpdatedAt: ''
+        });
+        if (saved && saved.task) {
+          const normalized = normalizeState({ ...S, plannerTasks: [saved.task] }).plannerTasks[0];
+          if (normalized) recoveredLocalTasks.push(normalized);
+          remoteIds.add(String(saved.task.id));
+        }
+      } catch (migrationError) {
+        console.warn('تعذر ترحيل مهمة محلية إلى TASKS:', migrationError);
+      }
+    }
+
+    const mergedTasks = [...remoteTasks];
+    recoveredLocalTasks.forEach(task => {
+      if (!mergedTasks.some(item => item.id === task.id)) mergedTasks.push(task);
+    });
+    S.plannerTasks = normalizeState({ ...S, plannerTasks: mergedTasks }).plannerTasks;
+    plannerDeletedIds = deletedIds;
+    save();
+
+    cloudPlannerSupported = true;
+    plannerCloudInitialized = true;
+    plannerCloudStatus = 'تم تحميل المهام من ورقة TASKS';
+    plannerCloudLastUpdated = new Date().toLocaleTimeString('ar-EG', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    return true;
+  } catch (error) {
+    cloudPlannerSupported = false;
+    plannerCloudInitialized = false;
+    plannerCloudStatus = error && error.message
+      ? error.message
+      : 'تعذّر الاتصال بورقة TASKS.';
+    console.error('تعذر تحميل المهام من TASKS:', error);
+    if (manual) showAppToast(plannerCloudStatus, 6500);
+    return false;
+  } finally {
+    plannerLoadInFlight = false;
+    const plannerFormHasFocus = $('#plannerTaskForm') &&
+      $('#plannerTaskForm').contains(document.activeElement);
+    if (renderAfter && S.ui.tab === 'plan' && !plannerFormHasFocus) render();
+  }
+}
+
+async function persistPlannerTask(task, expectedUpdatedAt, successMessage) {
+  if (!plannerCloudInitialized || !cloudPlannerSupported) {
+    showAppToast('المزامنة مع ورقة TASKS غير جاهزة. لم أعتبر المهمة محفوظة على الأجهزة الأخرى.', 5500);
     return false;
   }
-  if (plannerSaveInFlight) return false;
+  if (plannerSaveInFlight || plannerLoadInFlight) return false;
+
   plannerSaveInFlight = true;
-  S.plannerTasks = normalizeState({ ...S, plannerTasks: nextTasks }).plannerTasks;
-  save();
   render();
-  const synced = await saveSharedSettingsToGoogle();
-  plannerSaveInFlight = false;
-  if (synced) {
+  try {
+    const result = await postGooglePayload({
+      action: 'savetask',
+      task,
+      expectedUpdatedAt: String(expectedUpdatedAt || '')
+    });
+    if (!result || result.success === false || !result.task) {
+      throw new Error((result && (result.message || result.error)) || 'لم تؤكد Google حفظ المهمة.');
+    }
+
+    plannerCloudInitialized = false;
+    await loadPlannerTasksFromGoogle({ renderAfter: false });
+    if (!plannerCloudInitialized) {
+      S.plannerTasks = normalizeState({
+        ...S,
+        plannerTasks: [...(S.plannerTasks || []).filter(item => item.id !== result.task.id), result.task]
+      }).plannerTasks;
+      save();
+    }
     plannerEditingTaskId = '';
-    showAppToast(successMessage + ' تمت المزامنة.', 3200);
-  } else {
-    showAppToast('احتفظت بالتغيير على هذا الجهاز مؤقتًا، لكن Google لم تؤكد المزامنة. لا تعتبره محفوظًا على بقية الأجهزة بعد.', 6500);
+    showAppToast(successMessage + ' تمت مزامنة المهمة.', 3200);
+    return true;
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    if (message.includes('TASK_CONFLICT')) {
+      await loadPlannerTasksFromGoogle({ renderAfter: false });
+      showAppToast('المهمة اتعدّلت من جهاز آخر. حمّلت أحدث نسخة؛ راجعها قبل إعادة التعديل.', 6000);
+    } else {
+      showAppToast('لم يتم تأكيد حفظ المهمة في Google Sheets: ' + message, 6500);
+    }
+    return false;
+  } finally {
+    plannerSaveInFlight = false;
+    render();
   }
+}
+
+async function persistPlannerTaskDeletion(task, successMessage) {
+  if (!plannerCloudInitialized || !cloudPlannerSupported) {
+    showAppToast('المزامنة مع ورقة TASKS غير جاهزة. لم أعتبر الحذف محفوظًا.', 5500);
+    return false;
+  }
+  if (plannerSaveInFlight || plannerLoadInFlight) return false;
+
+  plannerSaveInFlight = true;
   render();
-  return synced;
+  try {
+    const result = await postGooglePayload({
+      action: 'deletetask',
+      id: task.id,
+      expectedUpdatedAt: String(task.updatedAt || '')
+    });
+    if (!result || result.success === false) {
+      throw new Error((result && (result.message || result.error)) || 'لم تؤكد Google حذف المهمة.');
+    }
+
+    // The server has confirmed the tombstone. Apply it locally immediately so a temporary
+    // follow-up read failure cannot make the deleted task appear active on this device.
+    plannerDeletedIds.add(String(task.id));
+    S.plannerTasks = (S.plannerTasks || []).filter(item => String(item.id) !== String(task.id));
+    if (plannerEditingTaskId === task.id) plannerEditingTaskId = '';
+    save();
+
+    plannerCloudInitialized = false;
+    await loadPlannerTasksFromGoogle({ renderAfter: false });
+    showAppToast(successMessage + ' تمت المزامنة.', 3200);
+    return true;
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    if (message.includes('TASK_CONFLICT')) {
+      await loadPlannerTasksFromGoogle({ renderAfter: false });
+      showAppToast('المهمة اتعدّلت من جهاز آخر؛ حمّلت أحدث نسخة ولم أحذفها.', 6000);
+    } else {
+      showAppToast('لم يتم تأكيد حذف المهمة في Google Sheets: ' + message, 6500);
+    }
+    return false;
+  } finally {
+    plannerSaveInFlight = false;
+    render();
+  }
 }
 
 function plannerFormError(message) {
@@ -174,10 +333,11 @@ document.addEventListener('submit', async event => {
     category: data.category, priority: data.priority, status: existing ? existing.status : 'todo',
     note: data.note, createdAt: existing ? existing.createdAt : now, updatedAt: now
   };
-  const next = existing
-    ? (S.plannerTasks || []).map(item => item.id === existing.id ? task : item)
-    : [...(S.plannerTasks || []), task];
-  await persistPlannerTasks(next, existing ? 'تم تعديل المهمة.' : 'تمت إضافة المهمة.');
+  await persistPlannerTask(
+    task,
+    existing ? existing.updatedAt : '',
+    existing ? 'تم تعديل المهمة.' : 'تمت إضافة المهمة.'
+  );
   if (S.ui.plannerDate !== task.date) {
     S.ui.plannerDate = task.date;
     save();
@@ -212,13 +372,9 @@ document.addEventListener('click', async event => {
     render(); return;
   }
   if (event.target.closest('#btnPlannerSync')) {
-    if (!cloudSettingsInitialized || !cloudPlannerSupported) {
-      showAppToast('خدمة Google الحالية لا تؤكد دعم مزامنة المهام. حدّث Apps Script وانشره أولًا.', 5000);
-      return;
-    }
-    const synced = await saveSharedSettingsToGoogle({ manual: true });
-    showAppToast(synced ? 'تمت مزامنة المهام.' : 'لم تؤكد Google المزامنة. احتفظ بالتغييرات محليًا وراجع الإعدادات.', 4500);
-    render(); return;
+    await loadPlannerTasksFromGoogle({ renderAfter: false, manual: true });
+    render();
+    return;
   }
   const edit = event.target.closest('[data-planner-edit]');
   if (edit) {
@@ -231,9 +387,11 @@ document.addEventListener('click', async event => {
     if (!plannerCanEdit()) return;
     const task = (S.plannerTasks || []).find(item => item.id === toggle.dataset.plannerToggle);
     if (!task) return;
-    await persistPlannerTasks((S.plannerTasks || []).map(item =>
-      item.id === task.id ? { ...item, status: item.status === 'done' ? 'todo' : 'done', updatedAt: new Date().toISOString() } : item
-    ), task.status === 'done' ? 'تمت إعادة فتح المهمة.' : 'تم إنجاز المهمة.');
+    await persistPlannerTask(
+      { ...task, status: task.status === 'done' ? 'todo' : 'done', updatedAt: new Date().toISOString() },
+      task.updatedAt,
+      task.status === 'done' ? 'تمت إعادة فتح المهمة.' : 'تم إنجاز المهمة.'
+    );
     return;
   }
   const remove = event.target.closest('[data-planner-delete]');
@@ -241,6 +399,6 @@ document.addEventListener('click', async event => {
     if (!plannerCanEdit()) return;
     const task = (S.plannerTasks || []).find(item => item.id === remove.dataset.plannerDelete);
     if (!task || !confirm('حذف المهمة «' + task.title + '»؟ لن يتغير أي سجل مالي.')) return;
-    await persistPlannerTasks((S.plannerTasks || []).filter(item => item.id !== task.id), 'تم حذف المهمة.');
+    await persistPlannerTaskDeletion(task, 'تم حذف المهمة.');
   }
 });
