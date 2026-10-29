@@ -22,6 +22,16 @@ assert.match(appsScript, /SETTINGS_SHEET_NAME:\s*'SYS_APP_SETTINGS'/,
   'Shared settings live in their own sheet');
 assert.match(appsScript, /function getSharedSettingsSheet\(\)/,
   'Settings sheet creation and validation are isolated');
+assert.match(appsScript, /LEGACY_SETTINGS_RECORD_KEY:\s*'shared_settings_v1'/,
+  'The previously deployed shared_settings_v1 record remains readable');
+assert.match(appsScript, /LEGACY_SETTINGS_HEADERS:\s*\['Key', 'Value', 'UpdatedAt'\]/,
+  'The previously deployed three-column settings header is recognized');
+assert.match(appsScript, /key === CONFIG\.LEGACY_SETTINGS_RECORD_KEY/,
+  'Legacy settings are read by their original record key');
+assert.match(appsScript, /current\.recordKey === CONFIG\.SETTINGS_RECORD_KEY && current\.rowNumber/,
+  'Saves update the current state row rather than overwriting a legacy recovery row');
+assert.doesNotMatch(appsScript, /contains extra rows beyond its single state record/,
+  'Other settings rows are preserved rather than rejected or overwritten');
 assert.match(appsScript, /function readSharedSettingsRecord\(sheet\)/,
   'Shared settings have a dedicated reader');
 assert.match(appsScript, /function saveSharedSettings\(data\)/,
