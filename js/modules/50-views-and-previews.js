@@ -63,9 +63,9 @@ function vDash(c) {
       </div>
 
       <div class="dashboard-safe-bottom">
-        <div class="safe-spend-alert ${safety.available < 0 ? 'is-deficit' : ''} dashboard-safe-note">
-          <i class="bi ${safety.available < 0 ? 'bi-exclamation-triangle-fill' : 'bi-info-circle'}"></i>
-          <div><strong>${safety.available < 0 ? 'إجمالي رصيد السيولة بالسالب؛ راجع الأرصدة والحركات المسجلة.' : 'رصيد السيولة لا يخصم الالتزامات أو مخصصات الأهداف.'}</strong></div>
+        <div class="safe-spend-alert ${safety.safe < 0 ? 'is-deficit' : safety.available < 0 ? 'is-deficit' : ''} dashboard-safe-note">
+          <i class="bi ${safety.safe < 0 || safety.available < 0 ? 'bi-exclamation-triangle-fill' : 'bi-info-circle'}"></i>
+          <div><strong>${safety.available < 0 ? 'إجمالي رصيد السيولة بالسالب؛ راجع الأرصدة والحركات المسجلة.' : safety.safe < 0 ? 'الالتزامات المحجوزة أكبر من السيولة المتاحة؛ راجع الالتزامات قبل الإنفاق.' : 'رصيد السيولة لا يخصم الالتزامات أو مخصصات الأهداف.'}</strong></div>
         </div>
         <div class="safe-spend-facts dashboard-safe-facts">
           <span><b>${safety.overdueCount}</b> متأخر</span>
