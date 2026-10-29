@@ -158,11 +158,11 @@ assert.match(source, /appRoot\.classList\.add\('view-transition'\)/, 'Section na
 assert.match(source, /function vDash\(c\)/, 'The dashboard view renderer exists');
 assert.match(source, /id="dashboardMoreDetails"/, 'Secondary dashboard analytics are grouped in an expandable section');
 assert.match(source, /class="dashboard-primary-grid"/, 'Dashboard primary summary container exists');
-assert.match(source, /<div class="dashboard-primary-grid" aria-label="الملخص المالي الأساسي">[\\s\\S]*?\\$\\{safeSpendPanel\\}[\\s\\S]*?<section class="hero-card dashboard-wealth-card"/, 'Safe-to-spend is shown above total wealth');
-assert.match(source, /class="dashboard-wealth-summary">[\\s\\S]*?إجمالي الثروة[\\s\\S]*?تقدير للأصول والسيولة[\\s\\S]*?class="dashboard-wealth-allocation"[\\s\\S]*?توزيع الثروة/, 'Wealth allocation is shown below the wealth total and description');
+assert.match(source, /<div class="dashboard-primary-grid" aria-label="الملخص المالي الأساسي">[\s\S]*?\$\{safeSpendPanel\}[\s\S]*?<section class="hero-card dashboard-wealth-card"/, 'Safe-to-spend is shown above total wealth');
+assert.match(source, /class="dashboard-wealth-summary">[\s\S]*?إجمالي الثروة[\s\S]*?تقدير للأصول والسيولة[\s\S]*?class="dashboard-wealth-allocation"[\s\S]*?توزيع الثروة/, 'Wealth allocation is shown below the wealth total and description');
 assert.match(css, /Dashboard summary hierarchy: safe-to-spend first, then wealth and allocation/, 'Dashboard hierarchy styles are present');
-assert.match(css, /\.dashboard-primary-grid\\s*\\{[\\s\\S]*?grid-template-columns:\\s*minmax\\(0, 1fr\\) !important;/, 'Dashboard summary sections stack vertically');
-assert.match(css, /\.dashboard-wealth-main\\s*\\{[\\s\\S]*?grid-template-columns:\\s*minmax\\(0, 1fr\\) !important;/, 'Wealth total sits above the allocation breakdown');
+assert.match(css, /Dashboard summary hierarchy: safe-to-spend first, then wealth and allocation[\s\S]*?\.dashboard-primary-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) !important;/, 'Dashboard summary sections stack vertically');
+assert.match(css, /Dashboard summary hierarchy: safe-to-spend first, then wealth and allocation[\s\S]*?\.dashboard-wealth-main\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) !important;/, 'Wealth total sits above the allocation breakdown');
 assert.match(source, /class="dashboard-safe-metrics"/, 'Safe-spend summary uses compact component metrics');
 assert.match(source, /class="dashboard-safe-more"/, 'Safe-spend calculation details are collapsed until requested');
 assert.match(css, /\.dashboard-primary-grid\s*\{/, 'Primary dashboard summary uses a responsive grid');
