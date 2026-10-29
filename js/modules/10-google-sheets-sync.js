@@ -292,44 +292,67 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
     }
 
     if (!result.state) {
+      // Keep the local state intact. Seeding the first cloud snapshot must be explicit
+      // so a new device's defaults can never replace the primary device's settings.
       cloudSettingsInitialized = false;
       cloudSettingsStatus = 'لم تُحفظ الإعدادات المشتركة بعد. افتح النظام على جهازك الأساسي واضغط «مزامنة إعدادات هذا الجهاز».';
       return true;
     }
 
-    const remote = result.state;
-    const localRateHistory = Array.isArray(S.rateHistory) ? S.rateHistory : [];
-    const localPendingScheduleIds = Array.isArray(S.pendingRecurringScheduleIds) ? S.pendingRecurringScheduleIds.map(String) : [];
-    const localPendingScheduleIdSet = new Set(localPendingScheduleIds);
-    const localPendingSchedules = (S.recurringSchedules || []).filter(item => localPendingScheduleIdSet.has(String(item.id)));
-    const localPendingGoalIds = Array.isArray(S.pendingFinancialGoalIds) ? S.pendingFinancialGoalIds.map(String) : [];
-    const localPendingGoalIdSet = new Set(localPendingGoalIds);
-    const localPendingGoals = (S.financialGoals || []).filter(item => localPendingGoalIdSet.has(String(item.id)));
-    const mergedSharedState = { ...S, ...remote, ui: S.ui, tx: S.tx };
-    if (Array.isArray(remote.recurringSchedules) && localPendingScheduleIds.length) {
-      mergedSharedState.recurringSchedules = [
-        ...remote.recurringSchedules.filter(item => !localPendingScheduleIdSet.has(String(item.id))),
-        ...localPendingSchedules
-      ];
-      mergedSharedState.pendingRecurringScheduleIds = localPendingScheduleIds;
+    const previousBaseline = cloudSettingsBaseline ? sharedSettingsClone(cloudSettingsBaseline) : null;
+    const localSnapshot = normalizeSharedSettingsSnapshot(sharedSettingsPayload());
+    const remoteState = normalizeState({
+      ...seed(),
+      ...result.state,
+      ui: S.ui,
+      tx: S.tx
+    });
+    const remoteSnapshot = normalizeSharedSettingsSnapshot(sharedSettingsPayload(remoteState));
+    let mergedSnapshot;
+
+    if (previousBaseline) {
+      // Preserve local edits made while offline or during another device's update.
+      // Three-way merge only applies local deltas and preserves unrelated remote edits.
+      mergedSnapshot = mergeSharedSettingsSnapshots(previousBaseline, localSnapshot, remoteSnapshot);
+    } else {
+      // On a new device, trust the cloud snapshot, not the device's seeded defaults.
+      mergedSnapshot = sharedSettingsClone(remoteSnapshot);
+
+      // Retain explicitly pending schedules/goals from older clients that predate
+      // the baseline-aware merge; these IDs are never inferred from transaction rows.
+      const pendingScheduleIds = new Set(
+        Array.isArray(S.pendingRecurringScheduleIds) ? S.pendingRecurringScheduleIds.map(String) : []
+      );
+      if (pendingScheduleIds.size) {
+        const localPendingSchedules = (S.recurringSchedules || []).filter(item => pendingScheduleIds.has(String(item.id)));
+        mergedSnapshot.recurringSchedules = mergeSharedCollectionByKey(
+          [], localPendingSchedules, mergedSnapshot.recurringSchedules, SHARED_SETTING_COLLECTION_KEYS.recurringSchedules
+        );
+      }
+      const pendingGoalIds = new Set(
+        Array.isArray(S.pendingFinancialGoalIds) ? S.pendingFinancialGoalIds.map(String) : []
+      );
+      if (pendingGoalIds.size) {
+        const localPendingGoals = (S.financialGoals || []).filter(item => pendingGoalIds.has(String(item.id)));
+        mergedSnapshot.financialGoals = mergeSharedCollectionByKey(
+          [], localPendingGoals, mergedSnapshot.financialGoals, SHARED_SETTING_COLLECTION_KEYS.financialGoals
+        );
+      }
     }
-    if (Array.isArray(remote.financialGoals) && localPendingGoalIds.length) {
-      mergedSharedState.financialGoals = [
-        ...remote.financialGoals.filter(item => !localPendingGoalIdSet.has(String(item.id))),
-        ...localPendingGoals
-      ];
-      mergedSharedState.pendingFinancialGoalIds = localPendingGoalIds;
-    }
-    if (!Object.prototype.hasOwnProperty.call(remote, 'baseRates')) {
-      mergedSharedState.baseRates = localRateHistory.length ? (S.baseRates || S.rates) : (remote.rates || S.rates);
-    }
-    if (!Array.isArray(remote.rateHistory)) mergedSharedState.rateHistory = localRateHistory;
-    S = normalizeState(mergedSharedState);
+
+    S = normalizeState({ ...S, ...mergedSnapshot, ui: S.ui, tx: S.tx });
+    setCloudSettingsBaseline(remoteSnapshot, result.revision);
     cloudSettingsInitialized = true;
-    cloudSettingsLastUpdated = result.updatedAt || remote.updatedAt || '';
+    cloudSettingsLastUpdated = result.updatedAt || '';
     cloudSettingsStatus = 'تم تحميل الإعدادات المشتركة من Google Sheets' +
       (cloudSettingsLastUpdated ? ' — ' + cloudSettingsLastUpdated : '');
     save();
+
+    const localPending = !sharedSettingsEqual(sharedSettingsPayload(), remoteSnapshot) ||
+      (S.pendingRecurringScheduleIds || []).length > 0 ||
+      (S.pendingFinancialGoalIds || []).length > 0;
+    if (localPending) scheduleSharedSettingsSync();
+
     if (renderAfter && S.ui.tab === 'set') render();
     return true;
   } catch (error) {
@@ -346,20 +369,40 @@ async function saveSharedSettingsToGoogle({ manual = false } = {}) {
   cloudSettingsStatus = 'جارٍ حفظ الإعدادات المشتركة…';
   if (S.ui.tab === 'set') render();
 
+  const sentSnapshot = normalizeSharedSettingsSnapshot(sharedSettingsPayload());
+  const baseSnapshot = cloudSettingsBaseline ? sharedSettingsClone(cloudSettingsBaseline) : null;
+  const baseRevision = cloudSettingsRevision;
+  let succeeded = false;
+  let shouldFollowupSync = false;
+
   try {
     const result = await postGooglePayload({
       action: 'savestate',
-      state: sharedSettingsPayload()
+      state: sentSnapshot,
+      baseState: baseSnapshot,
+      expectedRevision: baseRevision
     });
-    if (!result || result.success === false || result.status === 'error') {
-      throw new Error((result && (result.message || result.error)) || 'لم تؤكد Google حفظ الإعدادات');
+    if (!result || result.success === false || result.status === 'error' ||
+        !result.state || typeof result.state !== 'object' || Array.isArray(result.state)) {
+      throw new Error((result && (result.message || result.error)) ||
+        'لم تؤكد Google حفظ الإعدادات المشتركة. حدّث كود Apps Script وانشر إصدارًا جديدًا.');
     }
+
+    const serverSnapshot = normalizeSharedSettingsSnapshot(result.state);
+    const localAtResponse = normalizeSharedSettingsSnapshot(sharedSettingsPayload());
+    // Keep edits made while the request was in flight, while also incorporating
+    // changes from other devices returned by the server.
+    const reconciledSnapshot = mergeSharedSettingsSnapshots(sentSnapshot, localAtResponse, serverSnapshot);
+    S = normalizeState({ ...S, ...reconciledSnapshot, ui: S.ui, tx: S.tx });
+    setCloudSettingsBaseline(serverSnapshot, result.revision);
     cloudSettingsInitialized = true;
-    S.pendingRecurringScheduleIds = [];
-    S.pendingFinancialGoalIds = [];
     cloudSettingsLastUpdated = result.updatedAt || new Date().toISOString();
     cloudSettingsStatus = 'تمت مزامنة الإعدادات مع Google Sheets';
+    S.pendingRecurringScheduleIds = [];
+    S.pendingFinancialGoalIds = [];
     save();
+    succeeded = true;
+    shouldFollowupSync = !sharedSettingsEqual(sharedSettingsPayload(), serverSnapshot);
     if (S.ui.tab === 'set') render();
     return true;
   } catch (error) {
@@ -368,12 +411,13 @@ async function saveSharedSettingsToGoogle({ manual = false } = {}) {
     console.error('فشلت مزامنة الإعدادات المشتركة:', error);
     if (manual) {
       alert(cloudSettingsStatus +
-        '\nتأكد من تحديث ونشر كود Google Apps Script الداعم لـ savestate.');
+        '\nتأكد من تحديث ونشر كود Google Apps Script الداعم لـ GET?action=state وPOST action=savestate.');
     }
     if (S.ui.tab === 'set') render();
     return false;
   } finally {
     cloudSettingsSyncInFlight = false;
+    if (succeeded && shouldFollowupSync && cloudSettingsInitialized) scheduleSharedSettingsSync();
   }
 }
 
@@ -387,7 +431,6 @@ function scheduleSharedSettingsSync() {
     saveSharedSettingsToGoogle();
   }, 700);
 }
-
 
 async function saveTransactionToGoogle(tx) {
   const dataToSend = {
