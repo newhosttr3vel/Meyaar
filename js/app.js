@@ -854,7 +854,6 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
     }
 
     if (!result.state) {
-      cloudPlannerSupported = false;
       // Keep the local state intact. Seeding the first cloud snapshot must be explicit
       // so a new device's defaults can never replace the primary device's settings.
       cloudSettingsInitialized = false;
@@ -862,7 +861,6 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
       return true;
     }
 
-    cloudPlannerSupported = (Array.isArray(result.supportedKeys) && result.supportedKeys.includes('plannerTasks')) || (Object.prototype.hasOwnProperty.call(result.state, 'plannerTasks') && Array.isArray(result.state.plannerTasks));
     const previousBaseline = cloudSettingsBaseline ? sharedSettingsClone(cloudSettingsBaseline) : null;
     const localSnapshot = normalizeSharedSettingsSnapshot(sharedSettingsPayload());
     const remoteState = normalizeState({
@@ -935,14 +933,6 @@ async function saveSharedSettingsToGoogle({ manual = false } = {}) {
         'لم تؤكد Google حفظ الإعدادات المشتركة. حدّث كود Apps Script وانشر إصدارًا جديدًا.');
     }
 
-    const plannerChangedInRequest = !sharedSettingsEqual(
-      sentSnapshot.plannerTasks,
-      baseSnapshot && baseSnapshot.plannerTasks
-    );
-    if (plannerChangedInRequest && !Object.prototype.hasOwnProperty.call(result.state, 'plannerTasks')) {
-      cloudPlannerSupported = false;
-      throw new Error('خدمة Google لم تؤكد دعم قائمة المهام. لم أستبدل المهام المحلية بنتيجة الخادم. حدّث وانشر apps-script/Code.gs ثم أعد المحاولة.');
-    }
     cloudPlannerSupported = (Array.isArray(result.supportedKeys) && result.supportedKeys.includes('plannerTasks')) || (Object.prototype.hasOwnProperty.call(result.state, 'plannerTasks') && Array.isArray(result.state.plannerTasks));
     const serverSnapshot = normalizeSharedSettingsSnapshot(result.state);
     const localAtResponse = normalizeSharedSettingsSnapshot(sharedSettingsPayload());
@@ -3330,9 +3320,7 @@ setInterval(async () => {
   render();
   checkRecurringReminders();
 }, SHARED_SYNC_INTERVAL_MS);
-/* Daily and weekly planner. Tasks are shared settings, never financial transactions. */
-let plannerSaveInFlight = false;
-let plannerEditingTaskId = '';
+/* Daily and weekly planner. Tasks are stored in the dedicated TASKS sheet, never as financial transactions. */
 
 function plannerWeekStart(value) {
   const date = new Date((isValidISODate(value) ? value : localISODate()) + 'T12:00:00');
@@ -3368,17 +3356,23 @@ function plannerDurationLabel(minutes) {
 }
 
 function plannerCanEdit() {
-  return Boolean(cloudSettingsInitialized && cloudPlannerSupported && !plannerSaveInFlight);
+  return Boolean(plannerCloudInitialized && cloudPlannerSupported && !plannerSaveInFlight && !plannerLoadInFlight);
 }
 
 function plannerStatusNotice() {
-  if (!cloudSettingsInitialized) {
-    return '<div class="planner-sync-notice is-warning"><i class="bi bi-cloud-exclamation"></i><div><strong>المزامنة غير مؤكدة</strong><p>لم يتم تحميل البيانات المشتركة من Google بعد. افتح الإعدادات وتأكد من اتصال الجهاز قبل إضافة مهام.</p></div></div>';
-  }
   if (!cloudPlannerSupported) {
-    return '<div class="planner-sync-notice is-warning"><i class="bi bi-cloud-slash"></i><div><strong>مطلوب تحديث خدمة المزامنة</strong><p>لا تضف مهامًا حتى يتم نشر إصدار Apps Script الذي يدعم plannerTasks. بياناتك المالية لن تتأثر، لكن التخزين القديم لا يعرف قائمة المهام.</p></div></div>';
+    return '<div class="planner-sync-notice is-warning"><i class="bi bi-cloud-slash"></i><div><strong>تحديث خدمة Google مطلوب</strong><p>' +
+      esc(plannerCloudStatus || 'انشر إصدار Apps Script الداعم لورقة TASKS قبل إضافة أو تعديل أي مهمة.') +
+      '</p></div><button class="btn btn-sm btn-outline-primary" type="button" id="btnPlannerSync">إعادة المحاولة</button></div>';
   }
-  return '<div class="planner-sync-notice"><i class="bi bi-cloud-check"></i><div><strong>قائمة مهام مشتركة بين الكمبيوتر والموبايل</strong><p>أي إضافة أو تعديل أو إنجاز يتزامن مع Google Sheets، ثم يظهر على أجهزتك الأخرى بعد المزامنة.</p></div><button class="btn btn-sm btn-outline-primary" type="button" id="btnPlannerSync">مزامنة الآن</button></div>';
+  if (!plannerCloudInitialized) {
+    return '<div class="planner-sync-notice is-warning"><i class="bi bi-cloud-arrow-down"></i><div><strong>جارٍ تحميل المهام</strong><p>' +
+      esc(plannerCloudStatus || 'بيتم تحميل جدولك من ورقة TASKS.') +
+      '</p></div><button class="btn btn-sm btn-outline-primary" type="button" id="btnPlannerSync">مزامنة الآن</button></div>';
+  }
+  return '<div class="planner-sync-notice"><i class="bi bi-cloud-check"></i><div><strong>المهام محفوظة في TASKS ومشتركة بين أجهزتك</strong><p>آخر تحديث: ' +
+    esc(plannerCloudLastUpdated || 'تم الاتصال') +
+    ' · التعديلات تتزامن من Google Sheets، بعيدًا عن بيانات المعاملات المالية.</p></div><button class="btn btn-sm btn-outline-primary" type="button" id="btnPlannerSync">مزامنة الآن</button></div>';
 }
 
 function vPlanner() {
