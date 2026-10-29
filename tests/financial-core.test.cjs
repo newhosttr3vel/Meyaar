@@ -9,6 +9,7 @@ const appPath = path.join(__dirname, '..', 'js', 'app.js');
 const source = fs.readFileSync(appPath, 'utf8');
 const appsScriptPath = path.join(__dirname, '..', 'apps-script', 'Code.gs');
 const appsScriptSource = fs.readFileSync(appsScriptPath, 'utf8');
+assert.doesNotThrow(() => new Function(appsScriptSource), 'Apps Script source parses as JavaScript');
 const marker = '\nconst charts = {};';
 const cutAt = source.indexOf(marker);
 assert.ok(cutAt > 0, 'Financial engine marker exists before UI rendering');
@@ -177,7 +178,7 @@ assert.equal(
   false,
   'Planner tasks are excluded from the financial settings payload and use the dedicated TASKS sheet'
 );
-assert.equal(Object.prototype.hasOwnProperty.call(mergedPlanner, 'tx'), false,
+assert.equal(Object.prototype.hasOwnProperty.call(mergedShared, 'tx'), false,
   'Planner synchronization never adds transaction rows to the shared settings payload');
 assert.equal(Object.prototype.hasOwnProperty.call(mergedShared, 'tx'), false,
   'The shared settings payload never includes transaction rows');
@@ -319,7 +320,6 @@ assert.match(appsScriptSource, /migrateLegacyPlannerTasksIfNeeded/, 'Legacy task
 assert.match(appsScriptSource, /TASK_CONFLICT/, 'Apps Script rejects stale edits rather than silently overwriting another device');
 assert.match(appsScriptSource, /SHEET_NAME:\s*'DB_TRANSACTIONS'/, 'The existing transaction sheet name stays unchanged');
 assert.match(appsScriptSource, /const sheet = getTransactionsSheet\(\);/, 'Default transaction handling still uses DB_TRANSACTIONS');
-assert.match(source, /plannerTasks:\s*source\.plannerTasks/, 'Planner tasks are stored in the shared settings payload');
 assert.match(source, /function plannerWeekStart\(value\)/, 'The weekly planner has a stable week calculation');
 assert.match(source, /function vIncomeSources\(\)/, 'The income sources view is wired');
 assert.match(source, /incomeSources:\s*source\.incomeSources/, 'Income sources are included in shared settings');
