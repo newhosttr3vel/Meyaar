@@ -1528,7 +1528,7 @@ function vDash(c) {
       </div>
       <div class="safe-spend-alert ${safety.safe < 0 ? 'is-deficit' : ''} dashboard-safe-note">
         <i class="bi ${safety.safe < 0 ? 'bi-exclamation-triangle-fill' : 'bi-info-circle'}"></i>
-        <div><strong>${safety.safe < 0 ? 'الالتزامات والحجوزات تتجاوز السيولة الحالية.' : 'التقدير لا يشمل المصروفات الطارئة أو الفواتير التي لم تُسجّل.'}</strong><span>${safety.safe < 0 ? 'راجع الالتزامات والمبالغ المخصصة قبل أي إنفاق جديد.' : 'اترك دائمًا هامشًا للطوارئ قبل اتخاذ قرار الصرف.'}</span></div>
+        <div><strong>${safety.safe < 0 ? 'التزاماتك وحجوزاتك تتجاوز السيولة الحالية.' : 'التقدير لا يشمل المصروفات الطارئة أو الفواتير التي لم تُسجّل.'}</strong><span>${safety.safe < 0 ? 'راجع الالتزامات والمبالغ المخصصة قبل أي إنفاق جديد.' : 'اترك دائمًا هامشًا للطوارئ قبل اتخاذ قرار الصرف.'}</span></div>
       </div>
       <div class="safe-spend-lower dashboard-safe-lower">
         <div class="safe-spend-facts">
