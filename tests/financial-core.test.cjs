@@ -162,6 +162,21 @@ assert.deepEqual(
 );
 assert.equal(mergedShared.rates.SAR, 13.4, 'Local edit to one currency rate is applied');
 assert.equal(mergedShared.rates.USD, 52.25, 'Remote edit to a different currency rate is preserved');
+const taskFixture = (id, title, date) => ({
+  id, title, date, startTime: '09:00', endTime: '10:00', category: 'تعلم',
+  priority: 'متوسطة', status: 'todo', note: '', createdAt: '2026-10-29T08:00:00Z', updatedAt: ''
+});
+sharedBase.plannerTasks = [taskFixture('TASK-BASE', 'مهمة قديمة', '2026-10-31')];
+sharedLocal.plannerTasks = [...sharedBase.plannerTasks, taskFixture('TASK-PC', 'مهمة الكمبيوتر', '2026-11-01')];
+sharedRemote.plannerTasks = [...sharedBase.plannerTasks, taskFixture('TASK-MOBILE', 'مهمة الموبايل', '2026-11-02')];
+const mergedPlanner = api.mergeSharedSettingsSnapshots(sharedBase, sharedLocal, sharedRemote);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(mergedPlanner.plannerTasks.map(item => item.id).sort())),
+  ['TASK-BASE', 'TASK-MOBILE', 'TASK-PC'],
+  'Concurrent planner tasks created on desktop and mobile are both preserved'
+);
+assert.equal(Object.prototype.hasOwnProperty.call(mergedPlanner, 'tx'), false,
+  'Planner synchronization never adds transaction rows to the shared settings payload');
 assert.equal(Object.prototype.hasOwnProperty.call(mergedShared, 'tx'), false,
   'The shared settings payload never includes transaction rows');
 
