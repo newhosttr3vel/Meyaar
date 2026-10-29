@@ -3123,7 +3123,14 @@ document.addEventListener('click', e => {
   }
 
   const tab = e.target.closest('[data-tab]');
-  if (tab) { setSidebarOpen(false); S.ui.tab = tab.dataset.tab; save(); render(); return; }
+  if (tab) {
+    setSidebarOpen(false);
+    S.ui.tab = tab.dataset.tab;
+    save();
+    render();
+    if (S.ui.tab === 'plan') loadPlannerTasksFromGoogle({ renderAfter: false });
+    return;
+  }
   if (e.target.closest('#btnAddTx')) { openTx(); return; }
   if (e.target.closest('#btnAddTransfer')) { openTransfer(); return; }
   if (e.target.closest('#btnAddGoal') || e.target.closest('#btnAddGoalEmpty')) { openFinancialGoalModal(); return; }
@@ -3297,9 +3304,10 @@ else document.documentElement.setAttribute('data-theme', 'light');
 render();
 
 (async function initializeCloudData() {
-  // Load the shared settings first so custom account codes exist before auditing transactions.
+  // Load settings before transactions, then load planner tasks from their dedicated sheet.
   await loadSharedSettingsFromGoogle({ renderAfter: false });
   await loadDataFromGoogle({ renderAfter: false });
+  await loadPlannerTasksFromGoogle({ renderAfter: false });
   render();
   checkRecurringReminders();
 
@@ -3317,9 +3325,24 @@ setInterval(async () => {
   if (document.visibilityState !== 'visible') return;
   await loadSharedSettingsFromGoogle({ renderAfter: false });
   await loadDataFromGoogle({ renderAfter: false });
-  render();
+
+  const plannerFormHasFocus = $('#plannerTaskForm') &&
+    $('#plannerTaskForm').contains(document.activeElement);
+  if (S.ui.tab === 'plan' && !plannerSaveInFlight && !plannerFormHasFocus) {
+    await loadPlannerTasksFromGoogle({ renderAfter: false });
+  }
+  if (S.ui.tab !== 'plan' || !plannerFormHasFocus) render();
   checkRecurringReminders();
 }, SHARED_SYNC_INTERVAL_MS);
+
+// Refresh tasks every 15 seconds while the planner is open, without interrupting typing.
+setInterval(() => {
+  if (document.visibilityState !== 'visible' || S.ui.tab !== 'plan' ||
+      plannerSaveInFlight || plannerLoadInFlight) return;
+  const plannerFormHasFocus = $('#plannerTaskForm') &&
+    $('#plannerTaskForm').contains(document.activeElement);
+  if (!plannerFormHasFocus) loadPlannerTasksFromGoogle({ renderAfter: true });
+}, 15000);
 /* Daily and weekly planner. Tasks are stored in the dedicated TASKS sheet, never as financial transactions. */
 
 function plannerWeekStart(value) {
