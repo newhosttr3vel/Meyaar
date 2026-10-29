@@ -1902,6 +1902,17 @@ function render() {
   const shouldAnimateView = Boolean(previousRenderedTab && previousRenderedTab !== S.ui.tab);
   appRoot.dataset.renderedTab = S.ui.tab;
   appRoot.innerHTML = views[S.ui.tab](c);
+  const dashboardMoreDetails = $('#dashboardMoreDetails');
+  if (dashboardMoreDetails) {
+    dashboardMoreDetails.addEventListener('toggle', () => {
+      if (!dashboardMoreDetails.open) return;
+      requestAnimationFrame(() => {
+        Object.values(charts).forEach(chart => {
+          if (chart && typeof chart.resize === 'function') chart.resize();
+        });
+      });
+    });
+  }
   const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (shouldAnimateView && !reducedMotion) {
     appRoot.classList.remove('view-transition');
