@@ -217,6 +217,18 @@ let S;
 try { S = normalizeState(JSON.parse(localStorage.getItem(KEY))); }
 catch (e) { S = seed(); }
 
+try {
+  cloudSettingsBaseline = S.__cloudSettingsBaseline
+    ? normalizeSharedSettingsSnapshot(S.__cloudSettingsBaseline)
+    : null;
+  cloudSettingsRevision = Number.isFinite(Number(S.__cloudSettingsRevision))
+    ? Math.max(0, Math.trunc(Number(S.__cloudSettingsRevision)))
+    : 0;
+} catch (e) {
+  cloudSettingsBaseline = null;
+  cloudSettingsRevision = 0;
+}
+
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { console.error('تعذر حفظ البيانات محلياً:', e); } };
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);

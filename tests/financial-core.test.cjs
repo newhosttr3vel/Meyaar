@@ -26,7 +26,11 @@ globalThis.__financeTest = {
   incomeSourceId,
   INCOME_SOURCE_KINDS,
   INCOME_SOURCE_FREQUENCIES,
+  seed,
   sharedSettingsPayload,
+  mergeSharedSettingsSnapshots,
+  mergeLegacySharedSettingsSnapshots,
+  sharedSettingsEqual,
   goalProgress,
   goalMonthsRemaining,
   goalMonthlyRequired,
@@ -73,21 +77,37 @@ function makeState(overrides = {}) {
 }
 
 // Transaction safety contract: these checks are offline and never connect to the live Google Sheet.
-const appsScriptDocPath = path.join(__dirname, '..', 'docs', 'GOOGLE_APPS_SCRIPT.md');
-const appsScriptDoc = fs.readFileSync(appsScriptDocPath, 'utf8');
+const appsScriptPath = path.join(__dirname, '..', 'apps-script', 'Code.gs');
+const appsScriptCode = fs.readFileSync(appsScriptPath, 'utf8');
+assert.doesNotThrow(() => new vm.Script(appsScriptCode, { filename: 'apps-script/Code.gs' }),
+  'The Apps Script source must be syntactically valid JavaScript');
 const expectedSheetHeaders = [
   'Date', 'Type', 'Amount', 'Category', 'Notes', 'Account',
   'Payment', 'Currency', 'Fee', 'AssetCode', 'Quantity', 'Price'
 ];
 assert.match(source, /const KEY = 'fin_dash_pro_v2';/,
   'The existing local storage key remains stable during structural refactoring');
-const headerBlock = appsScriptDoc.match(/HEADERS:\s*\[([\s\S]*?)\]/);
+const headerBlock = appsScriptCode.match(/HEADERS:\s*\[([\s\S]*?)\]/);
 assert.ok(headerBlock, 'The documented Google Sheets header contract exists');
 const documentedSheetHeaders = [...headerBlock[1].matchAll(/'([^']+)'/g)].map(match => match[1]);
 assert.deepEqual(documentedSheetHeaders, expectedSheetHeaders,
   'Google Sheets columns A:L keep their established names and order');
-assert.match(appsScriptDoc, /COLUMN_COUNT:\s*12/,
+assert.match(appsScriptCode, /COLUMN_COUNT:\s*12/,
   'The Google Sheets schema remains exactly 12 columns (A:L)');
+assert.match(appsScriptCode, /SETTINGS_SHEET_NAME:\s*'SYS_APP_SETTINGS'/,
+  'Shared settings use a separate settings sheet');
+assert.match(appsScriptCode, /function getSharedSettingsSheet\(\)/,
+  'The separate settings sheet has a dedicated accessor');
+assert.match(appsScriptCode, /function saveSharedSettings\(data\)/,
+  'Shared settings can be persisted independently of transactions');
+assert.match(appsScriptCode, /action === 'savestate'/,
+  'The savestate action is supported');
+assert.match(appsScriptCode, /action === 'state'/,
+  'The shared state GET action is supported');
+assert.match(appsScriptCode, /function mergeSharedSettingsState\(/,
+  'Backend sync merges changes against the base snapshot');
+assert.match(appsScriptCode, /SHEET_NAME:\s*'DB_TRANSACTIONS'/,
+  'The transaction sheet retains its existing name');
 const saveStart = source.indexOf('async function saveTransactionToGoogle(tx)');
 const saveEnd = source.indexOf('async function syncTransactionDetailsToGoogle(tx)', saveStart);
 assert.ok(saveStart >= 0 && saveEnd > saveStart,
@@ -113,6 +133,75 @@ for (const field of [
   assert.equal(retainedTransaction[field], transactionContractFixture[field],
     'State normalization preserves transaction field: ' + field);
 }
+
+// Cross-device settings merge: concurrent independent additions and map edits must coexist.
+api.setState(makeState({
+  incomeSources: [{
+    id: 'INC-BASE', name: 'مصدر قديم', kind: 'عمل حر', frequency: 'غير منتظم',
+    cur: 'EGP', expectedAmount: 0, note: '', active: true, createdAt: ''
+  }]
+}));
+const sharedBase = JSON.parse(JSON.stringify(api.sharedSettingsPayload()));
+const sharedLocal = JSON.parse(JSON.stringify(sharedBase));
+const sharedRemote = JSON.parse(JSON.stringify(sharedBase));
+sharedLocal.incomeSources.push({
+  id: 'INC-DESKTOP', name: 'دخل من الكمبيوتر', kind: 'عمل حر', frequency: 'غير منتظم',
+  cur: 'EGP', expectedAmount: 0, note: '', active: true, createdAt: ''
+});
+sharedRemote.incomeSources.push({
+  id: 'INC-MOBILE', name: 'دخل من الموبايل', kind: 'مبيعات', frequency: 'غير منتظم',
+  cur: 'EGP', expectedAmount: 0, note: '', active: true, createdAt: ''
+});
+sharedLocal.rates.SAR = 13.4;
+sharedRemote.rates.USD = 52.25;
+const mergedShared = api.mergeSharedSettingsSnapshots(sharedBase, sharedLocal, sharedRemote);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(mergedShared.incomeSources.map(item => item.id).sort())),
+  ['INC-BASE', 'INC-DESKTOP', 'INC-MOBILE'],
+  'Concurrent source additions from two devices are both preserved'
+);
+assert.equal(mergedShared.rates.SAR, 13.4, 'Local edit to one currency rate is applied');
+assert.equal(mergedShared.rates.USD, 52.25, 'Remote edit to a different currency rate is preserved');
+assert.equal(Object.prototype.hasOwnProperty.call(mergedShared, 'tx'), false,
+  'The shared settings payload never includes transaction rows');
+
+const sharedDeleteLocal = JSON.parse(JSON.stringify(sharedBase));
+sharedDeleteLocal.incomeSources = [];
+const mergedDelete = api.mergeSharedSettingsSnapshots(sharedBase, sharedDeleteLocal, sharedRemote);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(mergedDelete.incomeSources.map(item => item.id).sort())),
+  ['INC-MOBILE'],
+  'A local removal is merged while unrelated records added remotely are retained'
+);
+
+// First sync after an old browser upgrade: seeded defaults must not overwrite remote edits,
+// and non-default local settings must not be discarded just because no baseline exists yet.
+const legacyDefaults = JSON.parse(JSON.stringify(api.sharedSettingsPayload(api.seed())));
+const legacyLocal = JSON.parse(JSON.stringify(legacyDefaults));
+const legacyRemote = JSON.parse(JSON.stringify(legacyDefaults));
+legacyLocal.accounts.find(item => item.code === 'CASH').name = 'خزنة البيت';
+legacyLocal.incomeSources.push({
+  id: 'INC-LEGACY-DESKTOP', name: 'مصدر محلي قديم', kind: 'عمل حر',
+  frequency: 'غير منتظم', cur: 'EGP', expectedAmount: 0, note: '', active: true, createdAt: ''
+});
+legacyRemote.accounts.find(item => item.code === 'BANK').name = 'البنك بعد تعديل الموبايل';
+legacyRemote.rates.SAR = 13.75;
+legacyRemote.incomeSources.push({
+  id: 'INC-LEGACY-MOBILE', name: 'مصدر مضاف من الموبايل', kind: 'مبيعات',
+  frequency: 'غير منتظم', cur: 'EGP', expectedAmount: 0, note: '', active: true, createdAt: ''
+});
+const mergedLegacy = api.mergeLegacySharedSettingsSnapshots(legacyLocal, legacyRemote);
+assert.equal(mergedLegacy.accounts.find(item => item.code === 'CASH').name, 'خزنة البيت',
+  'A non-default local account edit is preserved on first sync after upgrade');
+assert.equal(mergedLegacy.accounts.find(item => item.code === 'BANK').name, 'البنك بعد تعديل الموبايل',
+  'An untouched local default does not overwrite an account changed in the cloud');
+assert.equal(mergedLegacy.rates.SAR, 13.75,
+  'Untouched local default rates do not replace the remote exchange rate');
+assert.deepEqual(
+  JSON.parse(JSON.stringify(mergedLegacy.incomeSources.map(item => item.id).sort())),
+  ['INC-LEGACY-DESKTOP', 'INC-LEGACY-MOBILE'],
+  'Legacy local sources and new mobile sources survive the first baseline-aware merge'
+);
 
 // Historical FX: old baseline before the first recorded rate, then effective-dated rates.
 api.setState(makeState());
@@ -180,7 +269,7 @@ assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal o
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
 assert.match(html, /style\.css\?v=20261029-modules1/, 'Updated CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-modules1/, 'Updated JS cache version is active');
+assert.match(html, /app\.js\?v=20261029-sync2/, 'Updated JS cache version is active');
 assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
 assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
 assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists');
@@ -188,7 +277,7 @@ for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory
   assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
 }
 assert.match(html, /style\.css\?v=20261029-modules1/, 'Recurring CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-modules1/, 'Recurring JS cache version is active');
+assert.match(html, /app\.js\?v=20261029-sync2/, 'Recurring JS cache version is active');
 assert.match(html, /id="btnSidebarToggle"/, 'The sidebar toggle is present');
 assert.match(html, /id="appSidebar"/, 'The collapsible sidebar is present');
 assert.match(html, /id="sidebarBackdrop"/, 'The sidebar backdrop is present');
@@ -199,7 +288,7 @@ for (const id of ['incomeSourceName', 'incomeSourceKind', 'incomeSourceFrequency
   assert.ok(html.includes('id="' + id + '"'), 'Income source form field ' + id + ' exists');
 }
 assert.match(source, /function vIncomeSources\(\)/, 'The income sources view is wired');
-assert.match(source, /incomeSources:\s*S\.incomeSources/, 'Income sources are included in shared settings');
+assert.match(source, /incomeSources:\s*source\.incomeSources/, 'Income sources are included in shared settings');
 assert.match(source, /لا ينشئ معاملات ولا يغيّر أرصدة الحسابات أو إجمالي الثروة/, 'Income source catalogue is separate from transaction balances');
 for (const tab of ['dash', 'tx', 'income', 'rec', 'goal', 'acc', 'ast', 'set', 'aud']) {
   assert.ok(html.includes('data-tab="' + tab + '"'), 'Sidebar navigation tab ' + tab + ' exists');
