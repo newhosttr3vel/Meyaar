@@ -127,16 +127,16 @@ assert.match(html, /id="txFxPreview"/, 'The transaction FX preview is visible to
 assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal opener exists');
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
-assert.match(html, /style\.css\?v=20261029-dashboard7/, 'Updated CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-dashboard7/, 'Updated JS cache version is active');
+assert.match(html, /style\.css\?v=20261029-dashboard8/, 'Updated CSS cache version is active');
+assert.match(html, /app\.js\?v=20261029-dashboard8/, 'Updated JS cache version is active');
 assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
 assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
 assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists');
 for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory', 'recAccount', 'recStartDate', 'recDueDay', 'recReminderDays']) {
   assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
 }
-assert.match(html, /style\.css\?v=20261029-dashboard7/, 'Recurring CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-dashboard7/, 'Recurring JS cache version is active');
+assert.match(html, /style\.css\?v=20261029-dashboard8/, 'Recurring CSS cache version is active');
+assert.match(html, /app\.js\?v=20261029-dashboard8/, 'Recurring JS cache version is active');
 assert.match(html, /id="btnSidebarToggle"/, 'The sidebar toggle is present');
 assert.match(html, /id="appSidebar"/, 'The collapsible sidebar is present');
 assert.match(html, /id="sidebarBackdrop"/, 'The sidebar backdrop is present');
@@ -157,6 +157,11 @@ assert.match(source, /const COL = \['#0d9488'/, 'Original chart color palette is
 assert.match(source, /appRoot\.classList\.add\('view-transition'\)/, 'Section navigation triggers a view transition');
 assert.match(source, /function vDash\(c\)/, 'The dashboard view renderer exists');
 assert.match(source, /id="dashboardMoreDetails"/, 'Secondary dashboard analytics are grouped in an expandable section');
+assert.match(source, /class="dashboard-primary-grid"/, 'Wealth and safe-spend overview share a compact primary row');
+assert.match(source, /class="dashboard-safe-metrics"/, 'Safe-spend summary uses compact component metrics');
+assert.match(source, /class="dashboard-safe-more"/, 'Safe-spend calculation details are collapsed until requested');
+assert.match(css, /\.dashboard-primary-grid\s*\{/, 'Primary dashboard summary uses a responsive grid');
+assert.match(css, /\.dashboard-safe-metric\s*\{/, 'Compact safe-spend metrics have dedicated styling');
 assert.match(source, /dashboard-kpi-grid/, 'The dashboard uses a dedicated concise KPI grid');
 assert.match(source, /dashboard-sync-banner/, 'Cloud sync warnings have a dedicated compact banner');
 assert.match(source, /dashboardMoreDetails\.addEventListener\('toggle'/, 'Charts resize when secondary analytics are opened');
@@ -296,7 +301,7 @@ assert.equal(shortSafety.shortfall, 6000, 'The forecast exposes the amount of th
 assert.ok(source.includes('safe-spend-panel') && source.includes('safe-spend-assumptions'),
   'Dashboard includes the indicator and an expandable assumptions note');
 assert.match(source, /function safeToSpendSnapshot\(/, 'The safe-to-spend calculation is implemented in the financial core');
-assert.match(source, /التزاماتك وحجوزاتك تتجاوز السيولة الحالية/, 'The dashboard warns when the projected cash is insufficient');
+assert.match(source, /الالتزامات المحجوزة أكبر من السيولة المتاحة/, 'The dashboard warns when reserved commitments exceed available cash');
 assert.match(css, /\.safe-spend-panel/, 'The safe-to-spend indicator has dedicated responsive styling');
 
 

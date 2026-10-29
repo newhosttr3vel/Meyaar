@@ -1509,40 +1509,49 @@ function vDash(c) {
         <div class="safe-spend-title">
           <span class="safe-spend-eyebrow"><i class="bi bi-shield-check"></i> قرار مالي أوضح</span>
           <h3 id="safeSpendTitle">المتاح للصرف بأمان</h3>
-          <p>السيولة التقديرية بعد حجز الالتزامات غير المسجلة خلال 30 يومًا والمتأخرات ومخصصات الأهداف.</p>
+          <p>المتبقي بعد خصم الالتزامات غير المسجلة ومخصصات الأهداف.</p>
         </div>
         <span class="safe-spend-status ${safety.safe < 0 ? 'is-deficit' : safetyUncertain ? 'is-uncertain' : ''}">${safetyStatus}</span>
       </div>
-      <div class="safe-spend-main">
+
+      <div class="dashboard-safe-main">
         <div class="safe-spend-result">
-          <span>${safety.safe < 0 ? 'العجز المتوقع لتغطية الالتزامات والحجوزات' : 'المبلغ التقديري المتبقي'}</span>
+          <span>${safety.safe < 0 ? 'العجز المتوقع' : 'المتاح التقديري'}</span>
           <strong>${safetyAmount} <small>ج.م.</small></strong>
-          <p>${safety.safe < 0 ? 'هذا هو المبلغ المطلوب لتغطية الفرق قبل أي إنفاق إضافي.' : safety.safe === 0 ? 'السيولة الحالية مخصصة بالكامل للالتزامات والأهداف المحجوزة.' : 'استخدمه كمرجع للتخطيط، وليس كميزانية إنفاق مضمونة.'}</p>
+          <p>${safety.safe < 0 ? 'راجع الالتزامات قبل أي إنفاق إضافي.' : 'مؤشر للتخطيط، وليس ضمانًا لميزانية الإنفاق.'}</p>
         </div>
-        <div class="safe-spend-breakdown">
-          <div class="safe-spend-line"><span><i class="bi bi-wallet2"></i> السيولة في الحسابات</span><strong>${f(safety.available)} ج.م.</strong></div>
-          <div class="safe-spend-line is-deduction"><span><i class="bi bi-calendar2-check"></i> الالتزامات غير المسجلة</span><strong>− ${f(safety.commitments)} ج.م.</strong></div>
-          <div class="safe-spend-line is-deduction"><span><i class="bi bi-bullseye"></i> مخصصات الأهداف</span><strong>− ${f(safety.reservedGoals)} ج.م.</strong></div>
-          <div class="safe-spend-equation"><span>المتبقي بعد الحجوزات</span><b>${safetyAmount} ج.م.</b></div>
+        <div class="dashboard-safe-metrics" aria-label="مكونات تقدير المتاح للصرف">
+          <div class="dashboard-safe-metric"><span>السيولة</span><strong>${f(safety.available)}</strong><small>ج.م.</small></div>
+          <div class="dashboard-safe-metric is-deduction"><span>الالتزامات</span><strong>− ${f(safety.commitments)}</strong><small>ج.م.</small></div>
+          <div class="dashboard-safe-metric is-deduction"><span>الأهداف</span><strong>− ${f(safety.reservedGoals)}</strong><small>ج.م.</small></div>
         </div>
       </div>
-      <div class="safe-spend-alert ${safety.safe < 0 ? 'is-deficit' : ''} dashboard-safe-note">
-        <i class="bi ${safety.safe < 0 ? 'bi-exclamation-triangle-fill' : 'bi-info-circle'}"></i>
-        <div><strong>${safety.safe < 0 ? 'التزاماتك وحجوزاتك تتجاوز السيولة الحالية.' : 'التقدير لا يشمل المصروفات الطارئة أو الفواتير التي لم تُسجّل.'}</strong><span>${safety.safe < 0 ? 'راجع الالتزامات والمبالغ المخصصة قبل أي إنفاق جديد.' : 'اترك دائمًا هامشًا للطوارئ قبل اتخاذ قرار الصرف.'}</span></div>
-      </div>
-      <div class="safe-spend-lower dashboard-safe-lower">
-        <div class="safe-spend-facts">
+
+      <div class="dashboard-safe-bottom">
+        <div class="safe-spend-alert ${safety.safe < 0 ? 'is-deficit' : ''} dashboard-safe-note">
+          <i class="bi ${safety.safe < 0 ? 'bi-exclamation-triangle-fill' : 'bi-info-circle'}"></i>
+          <div><strong>${safety.safe < 0 ? 'الالتزامات المحجوزة أكبر من السيولة المتاحة.' : 'التقدير لا يشمل الطوارئ أو الفواتير غير المسجلة.'}</strong></div>
+        </div>
+        <div class="safe-spend-facts dashboard-safe-facts">
           <span><b>${safety.overdueCount}</b> متأخر</span>
           <span><b>${safety.upcomingCount}</b> خلال 30 يومًا</span>
           <span><b>${(S.financialGoals || []).filter(goal => goal && goal.active !== false).length}</b> أهداف نشطة</span>
         </div>
-        <div class="dashboard-safe-details">
-          <details class="safe-spend-details">
-            <summary>الالتزامات المحجوزة (${safety.obligations.length})</summary>
+      </div>
+
+      <details class="dashboard-safe-more">
+        <summary>
+          <span>تفاصيل الالتزامات وطريقة الحساب</span>
+          <span class="dashboard-safe-count">${safety.obligations.length}</span>
+          <i class="bi bi-chevron-down dashboard-safe-chevron" aria-hidden="true"></i>
+        </summary>
+        <div class="dashboard-safe-more-content">
+          <div class="dashboard-safe-obligations">
+            <strong class="dashboard-safe-subheading">الالتزامات المحجوزة</strong>
             ${safetyObligationList}
-          </details>
+          </div>
           <details class="safe-spend-assumptions">
-            <summary>طريقة الحساب والافتراضات</summary>
+            <summary>الافتراضات التي يعتمد عليها التقدير</summary>
             <ul>
               <li>السيولة هي أرصدة الحسابات المعلّمة «ضمن السيولة»، محسوبة من الأرصدة الافتتاحية والمعاملات السليمة حتى اليوم، بغض النظر عن فترة التقرير.</li>
               <li>تُخصم الالتزامات المتكررة غير المسجلة خلال 30 يومًا، وجميع المتأخرات غير المسجلة منذ بداية الجدول. الدخل الدوري لا يُعتبر سيولة مضمونة.</li>
@@ -1552,7 +1561,7 @@ function vDash(c) {
             </ul>
           </details>
         </div>
-      </div>
+      </details>
     </section>`;
 
   const net = c.inc - c.exp;
@@ -1578,7 +1587,8 @@ function vDash(c) {
   </section>
   ${cloudBanner}
 
-  <section class="hero-card dashboard-wealth-card mb-4" aria-label="ملخص الثروة">
+  <div class="dashboard-primary-grid" aria-label="الملخص المالي الأساسي">
+  <section class="hero-card dashboard-wealth-card" aria-label="ملخص الثروة">
     <div class="dashboard-wealth-main">
       <div>
         <span class="dashboard-wealth-label"><i class="bi bi-gem"></i> إجمالي الثروة</span>
@@ -1592,6 +1602,8 @@ function vDash(c) {
       </div>
     </div>
   </section>
+    ${safeSpendPanel}
+  </div>
 
   <section class="dashboard-kpis-section mb-4" aria-labelledby="dashboardKpiTitle">
     <div class="dashboard-section-heading">
@@ -1602,8 +1614,6 @@ function vDash(c) {
       ${kpis.map(k => `<div class="col-6 col-lg-3"><article class="dashboard-kpi-card ${k.tone}"><div class="dashboard-kpi-top"><span class="dashboard-kpi-icon"><i class="bi ${k.icon}"></i></span><span class="dashboard-kpi-label">${k.label}</span></div><strong class="dashboard-kpi-value">${k.value}</strong></article></div>`).join('')}
     </div>
   </section>
-
-  ${safeSpendPanel}
 
   <section class="dashboard-analytics mt-4" aria-labelledby="dashboardAnalyticsTitle">
     <div class="dashboard-section-heading">
