@@ -300,7 +300,7 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
       return true;
     }
 
-    cloudPlannerSupported = Object.prototype.hasOwnProperty.call(result.state, 'plannerTasks') && Array.isArray(result.state.plannerTasks);
+    cloudPlannerSupported = (Array.isArray(result.supportedKeys) && result.supportedKeys.includes('plannerTasks')) || (Object.prototype.hasOwnProperty.call(result.state, 'plannerTasks') && Array.isArray(result.state.plannerTasks));
     const previousBaseline = cloudSettingsBaseline ? sharedSettingsClone(cloudSettingsBaseline) : null;
     const localSnapshot = normalizeSharedSettingsSnapshot(sharedSettingsPayload());
     const remoteState = normalizeState({
@@ -381,7 +381,7 @@ async function saveSharedSettingsToGoogle({ manual = false } = {}) {
       cloudPlannerSupported = false;
       throw new Error('خدمة Google لم تؤكد دعم قائمة المهام. لم أستبدل المهام المحلية بنتيجة الخادم. حدّث وانشر apps-script/Code.gs ثم أعد المحاولة.');
     }
-    cloudPlannerSupported = Object.prototype.hasOwnProperty.call(result.state, 'plannerTasks') && Array.isArray(result.state.plannerTasks);
+    cloudPlannerSupported = (Array.isArray(result.supportedKeys) && result.supportedKeys.includes('plannerTasks')) || (Object.prototype.hasOwnProperty.call(result.state, 'plannerTasks') && Array.isArray(result.state.plannerTasks));
     const serverSnapshot = normalizeSharedSettingsSnapshot(result.state);
     const localAtResponse = normalizeSharedSettingsSnapshot(sharedSettingsPayload());
     // Keep edits made while the request was in flight, while also incorporating
