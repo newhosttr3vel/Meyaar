@@ -1588,9 +1588,10 @@ function vDash(c) {
   ${cloudBanner}
 
   <div class="dashboard-primary-grid" aria-label="الملخص المالي الأساسي">
+    ${safeSpendPanel}
   <section class="hero-card dashboard-wealth-card" aria-label="ملخص الثروة">
     <div class="dashboard-wealth-main">
-      <div>
+      <div class="dashboard-wealth-summary">
         <span class="dashboard-wealth-label"><i class="bi bi-gem"></i> إجمالي الثروة</span>
         <div class="hero-value">${f(c.wealth)} <small>جنيه مصري</small></div>
         <p class="dashboard-wealth-note mb-0">تقدير للأصول والسيولة، وقد يعتمد على التكلفة المسجلة عند غياب سعر السوق.</p>
@@ -1602,7 +1603,6 @@ function vDash(c) {
       </div>
     </div>
   </section>
-    ${safeSpendPanel}
   </div>
 
   <section class="dashboard-kpis-section mb-4" aria-labelledby="dashboardKpiTitle">
