@@ -502,6 +502,17 @@ function mergeSharedSettingsSnapshots(baseSnapshot, localSnapshot, remoteSnapsho
   return normalizeSharedSettingsSnapshot(merged);
 }
 
+function mergeLegacySharedSettingsSnapshots(localSnapshot, remoteSnapshot) {
+  // On the first release with baseline tracking there is no historical cloud snapshot
+  // on existing browsers. Comparing against seed defaults prevents default values from
+  // overriding cloud values, while retaining non-default local edits and additions.
+  return mergeSharedSettingsSnapshots(
+    normalizeSharedSettingsSnapshot(seed()),
+    localSnapshot,
+    remoteSnapshot
+  );
+}
+
 function setCloudSettingsBaseline(snapshot, revision = 0) {
   cloudSettingsBaseline = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
     ? normalizeSharedSettingsSnapshot(snapshot)
@@ -855,29 +866,12 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
       // Three-way merge only applies local deltas and preserves unrelated remote edits.
       mergedSnapshot = mergeSharedSettingsSnapshots(previousBaseline, localSnapshot, remoteSnapshot);
     } else {
-      // On a new device, trust the cloud snapshot, not the device's seeded defaults.
-      mergedSnapshot = sharedSettingsClone(remoteSnapshot);
-
-      // Retain explicitly pending schedules/goals from older clients that predate
-      // the baseline-aware merge; these IDs are never inferred from transaction rows.
-      const pendingScheduleIds = new Set(
-        Array.isArray(S.pendingRecurringScheduleIds) ? S.pendingRecurringScheduleIds.map(String) : []
-      );
-      if (pendingScheduleIds.size) {
-        const localPendingSchedules = (S.recurringSchedules || []).filter(item => pendingScheduleIds.has(String(item.id)));
-        mergedSnapshot.recurringSchedules = mergeSharedCollectionByKey(
-          [], localPendingSchedules, mergedSnapshot.recurringSchedules, SHARED_SETTING_COLLECTION_KEYS.recurringSchedules
-        );
-      }
-      const pendingGoalIds = new Set(
-        Array.isArray(S.pendingFinancialGoalIds) ? S.pendingFinancialGoalIds.map(String) : []
-      );
-      if (pendingGoalIds.size) {
-        const localPendingGoals = (S.financialGoals || []).filter(item => pendingGoalIds.has(String(item.id)));
-        mergedSnapshot.financialGoals = mergeSharedCollectionByKey(
-          [], localPendingGoals, mergedSnapshot.financialGoals, SHARED_SETTING_COLLECTION_KEYS.financialGoals
-        );
-      }
+      // Legacy devices may contain locally edited settings but no saved cloud baseline yet.
+      // Use a known seed snapshot as the base: untouched defaults do not overwrite the
+      // cloud, while non-default local edits and added records are preserved and merged.
+      // Same-key conflicts cannot be reconstructed without a historical baseline, so the
+      // local version of a non-default edited item wins during this one-time migration.
+      mergedSnapshot = mergeLegacySharedSettingsSnapshots(localSnapshot, remoteSnapshot);
     }
 
     S = normalizeState({ ...S, ...mergedSnapshot, ui: S.ui, tx: S.tx });
