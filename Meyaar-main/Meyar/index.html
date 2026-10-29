@@ -28,7 +28,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link href="css/style.css?v=20261029-dashboard11" rel="stylesheet">
+  <link href="css/style.css?v=20261029-income1" rel="stylesheet">
 </head>
 <body>
   <nav class="navbar navbar-dark sticky-top shadow-sm app-topbar" aria-label="الشريط العلوي">
@@ -64,6 +64,7 @@
     <ul class="navbar-nav" id="navTabs">
       <li class="nav-item"><button class="nav-link active" data-tab="dash"><i class="bi bi-speedometer2" aria-hidden="true"></i><span>لوحة التحكم</span></button></li>
       <li class="nav-item"><button class="nav-link" data-tab="tx"><i class="bi bi-receipt" aria-hidden="true"></i><span>المعاملات</span></button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="income"><i class="bi bi-cash-stack" aria-hidden="true"></i><span>مصادر الدخل</span></button></li>
       <li class="nav-item"><button class="nav-link" data-tab="rec"><i class="bi bi-calendar2-week" aria-hidden="true"></i><span>الالتزامات</span></button></li>
       <li class="nav-item"><button class="nav-link" data-tab="goal"><i class="bi bi-bullseye" aria-hidden="true"></i><span>الأهداف المالية</span></button></li>
       <li class="nav-item"><button class="nav-link" data-tab="acc"><i class="bi bi-wallet2" aria-hidden="true"></i><span>الحسابات</span></button></li>
@@ -420,6 +421,78 @@
     </div>
   </div>
 
+  <div class="modal fade" id="modalIncomeSource" tabindex="-1" aria-labelledby="incomeSourceModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title" id="incomeSourceModalTitle">مصدر دخل جديد</h5>
+            <p class="note mb-0 mt-1">سجل بيانات المصدر للمتابعة والتنظيم، دون إنشاء معاملة مالية.</p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+        </div>
+        <form id="formIncomeSource">
+          <div class="modal-body">
+            <input type="hidden" name="id" id="incomeSourceId">
+            <div class="row g-3">
+              <div class="col-12 col-md-7">
+                <label class="form-label" for="incomeSourceName">اسم مصدر الدخل</label>
+                <input type="text" class="form-control" id="incomeSourceName" name="name" maxlength="100" placeholder="مثال: الوظيفة الأساسية أو العمل الحر" required>
+              </div>
+              <div class="col-12 col-md-5">
+                <label class="form-label" for="incomeSourceKind">نوع المصدر</label>
+                <select class="form-select" id="incomeSourceKind" name="kind" required>
+                  <option value="وظيفة ومرتب">وظيفة ومرتب</option>
+                  <option value="عمل حر">عمل حر</option>
+                  <option value="مشروع أو تجارة">مشروع أو تجارة</option>
+                  <option value="عمولات ومكافآت">عمولات ومكافآت</option>
+                  <option value="استثمار">استثمار</option>
+                  <option value="إيجار">إيجار</option>
+                  <option value="مبيعات">مبيعات</option>
+                  <option value="أخرى">أخرى</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-4">
+                <label class="form-label" for="incomeSourceFrequency">دورية الدخل</label>
+                <select class="form-select" id="incomeSourceFrequency" name="frequency" required>
+                  <option value="شهري">شهري</option>
+                  <option value="أسبوعي">أسبوعي</option>
+                  <option value="يومي">يومي</option>
+                  <option value="سنوي">سنوي</option>
+                  <option value="غير منتظم">غير منتظم</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-4">
+                <label class="form-label" for="incomeSourceCurrency">العملة</label>
+                <select class="form-select" id="incomeSourceCurrency" name="cur" required>
+                  <option value="EGP">جنيه مصري (EGP)</option>
+                  <option value="SAR">ريال سعودي (SAR)</option>
+                  <option value="USD">دولار أمريكي (USD)</option>
+                </select>
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label" for="incomeSourceExpected">المبلغ المتوقع للدورة (اختياري)</label>
+                <input type="number" class="form-control" id="incomeSourceExpected" name="expectedAmount" min="0" step="any" inputmode="decimal" placeholder="مثال: 12000">
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="incomeSourceNote">ملاحظات (اختياري)</label>
+                <textarea class="form-control" id="incomeSourceNote" name="note" rows="2" maxlength="300" placeholder="تفاصيل أو مواعيد أو ملاحظات عن المصدر"></textarea>
+              </div>
+            </div>
+            <div class="alert alert-info small mt-3 mb-0">
+              <i class="bi bi-info-circle"></i>
+              بيانات هذا القسم لتنظيم مصادر الدخل فقط؛ لا تنشئ معاملات ولا تغيّر أرصدة الحسابات أو إجمالي الثروة.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+            <button type="submit" class="btn btn-primary" id="btnSaveIncomeSource"><i class="bi bi-check-lg"></i> حفظ المصدر</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade" id="modalPrice" tabindex="-1">
     <div class="modal-dialog">
       <div class="modal-content">
@@ -464,6 +537,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="js/app.js?v=20261029-dashboard9"></script>
+  <script src="js/app.js?v=20261029-income1"></script>
 </body>
 </html>

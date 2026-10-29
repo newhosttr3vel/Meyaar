@@ -17,6 +17,11 @@ const PAY = ['نقدي', 'تحويل بنكي', 'بطاقة خصم', 'بطاقة
 const MON = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 const COL = ['#0d9488', '#d97706', '#6366f1', '#dc2626', '#8b5cf6', '#16a34a', '#ea580c', '#64748b'];
 const CURS = { EGP: 'ج.م', SAR: 'ر.س', USD: '$' };
+const INCOME_SOURCE_KINDS = ['وظيفة ومرتب', 'عمل حر', 'مشروع أو تجارة', 'عمولات ومكافآت', 'استثمار', 'إيجار', 'مبيعات', 'أخرى'];
+const INCOME_SOURCE_FREQUENCIES = ['شهري', 'أسبوعي', 'يومي', 'سنوي', 'غير منتظم'];
+function incomeSourceId() {
+  return 'INC-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+}
 
 const API_URL = "https://script.google.com/macros/s/AKfycbwJI2_IFB0ukOs1Ufko0wuLob2eAEIFLaPwsglNAeWnMdCUB_7euqWGV4xGzVBH1SflzQ/exec";
 const SHARED_SYNC_INTERVAL_MS = 45000;
@@ -375,6 +380,7 @@ function sharedSettingsPayload() {
     recurringSchedules: S.recurringSchedules,
     generatedOccurrences: S.generatedOccurrences,
     financialGoals: S.financialGoals,
+    incomeSources: S.incomeSources,
     budget: S.budget,
     warn: S.warn,
     accounts: S.accounts,
@@ -919,6 +925,7 @@ function seed() {
     pendingRecurringScheduleIds: [],
     financialGoals: [],
     pendingFinancialGoalIds: [],
+    incomeSources: [],
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
     warn: 0.9,
     accounts: [
@@ -938,7 +945,7 @@ function normalizeState(input) {
   const obj = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const out = { ...base, ...input };
   out.ui = { ...base.ui, ...obj(input.ui) };
-  if (!['dash', 'tx', 'acc', 'ast', 'set', 'aud', 'rec', 'goal'].includes(out.ui.tab)) out.ui.tab = 'dash';
+  if (!['dash', 'tx', 'income', 'acc', 'ast', 'set', 'aud', 'rec', 'goal'].includes(out.ui.tab)) out.ui.tab = 'dash';
   out.ui.y = Number.isInteger(Number(out.ui.y)) && Number(out.ui.y) >= 1900 && Number(out.ui.y) <= 2200 ? Number(out.ui.y) : base.ui.y;
   out.ui.m = out.ui.m === 'all' || /^(0[1-9]|1[0-2])$/.test(String(out.ui.m)) ? String(out.ui.m) : 'all';
   out.ui.q = String(out.ui.q || '');
@@ -1061,6 +1068,30 @@ function normalizeState(input) {
   out.pendingFinancialGoalIds = Array.isArray(input.pendingFinancialGoalIds)
     ? [...new Set(input.pendingFinancialGoalIds.map(String))]
     : [];
+
+  const incomeSourceIds = new Set();
+  out.incomeSources = (Array.isArray(input.incomeSources) ? input.incomeSources : [])
+    .filter(item => {
+      if (!item || typeof item !== 'object' || !String(item.id || '').trim() || incomeSourceIds.has(String(item.id))) return false;
+      incomeSourceIds.add(String(item.id));
+      return true;
+    })
+    .map(item => {
+      const expected = item.expectedAmount === '' || item.expectedAmount === null || item.expectedAmount === undefined
+        ? 0 : Number(item.expectedAmount);
+      return {
+        id: String(item.id),
+        name: String(item.name || '').trim().slice(0, 100),
+        kind: INCOME_SOURCE_KINDS.includes(item.kind) ? item.kind : 'أخرى',
+        frequency: INCOME_SOURCE_FREQUENCIES.includes(item.frequency) ? item.frequency : 'غير منتظم',
+        cur: ['EGP', 'SAR', 'USD'].includes(item.cur) ? item.cur : 'EGP',
+        expectedAmount: Number.isFinite(expected) && expected > 0 ? expected : 0,
+        note: String(item.note || '').trim().slice(0, 300),
+        active: item.active !== false,
+        createdAt: String(item.createdAt || '')
+      };
+    })
+    .filter(item => item.name);
 
   out.budget = { ...base.budget, ...obj(input.budget) };
   CATS.forEach(cat => {
@@ -1860,6 +1891,126 @@ function vFinancialGoals() {
     '</section>';
 }
 
+function vIncomeSources() {
+  const sources = [...(S.incomeSources || [])].sort((a, b) =>
+    Number(b.active !== false) - Number(a.active !== false) || a.name.localeCompare(b.name, 'ar')
+  );
+  const activeCount = sources.filter(source => source.active !== false).length;
+  const inactiveCount = sources.length - activeCount;
+  const usedKinds = new Set(sources.filter(source => source.active !== false).map(source => source.kind));
+  const kindIcons = {
+    'وظيفة ومرتب': 'bi-briefcase',
+    'عمل حر': 'bi-laptop',
+    'مشروع أو تجارة': 'bi-shop',
+    'عمولات ومكافآت': 'bi-award',
+    'استثمار': 'bi-graph-up-arrow',
+    'إيجار': 'bi-house-door',
+    'مبيعات': 'bi-bag',
+    'أخرى': 'bi-cash-coin'
+  };
+  const syncMessage = cloudSettingsInitialized
+    ? '<span class="income-sync-pill"><i class="bi bi-cloud-check"></i> المصادر مشتركة بين أجهزتك</span>'
+    : '<span class="income-sync-pill is-warning"><i class="bi bi-cloud-exclamation"></i> يلزم تأكيد مزامنة الإعدادات</span>';
+
+  const cards = sources.length ? sources.map(source => {
+    const isActive = source.active !== false;
+    const amount = Number(source.expectedAmount) > 0
+      ? '<div class="income-source-expected"><span>المبلغ المتوقع · ' + esc(source.frequency) + '</span><strong>' +
+          esc(f(source.expectedAmount)) + ' <small>' + esc(CURS[source.cur] || source.cur) + '</small></strong></div>'
+      : '<div class="income-source-expected is-unspecified"><span>المبلغ المتوقع</span><strong>غير محدد</strong></div>';
+    return '<article class="income-source-card ' + (isActive ? 'is-active' : 'is-inactive') + '">' +
+      '<div class="income-source-card-head">' +
+        '<span class="income-source-icon"><i class="bi ' + (kindIcons[source.kind] || kindIcons['أخرى']) + '" aria-hidden="true"></i></span>' +
+        '<div class="income-source-title"><strong>' + esc(source.name) + '</strong><span>' + esc(source.kind) + ' · ' + esc(source.cur) + '</span></div>' +
+        '<span class="income-source-status ' + (isActive ? 'is-active' : 'is-inactive') + '">' + (isActive ? 'نشط' : 'متوقف') + '</span>' +
+      '</div>' +
+      amount +
+      (source.note ? '<p class="income-source-note">' + esc(source.note) + '</p>' : '') +
+      '<div class="income-source-actions">' +
+        '<button type="button" class="btn btn-outline-primary btn-sm" data-edit-income-source="' + esc(source.id) + '"><i class="bi bi-pencil"></i> تعديل</button>' +
+        '<button type="button" class="btn btn-outline-secondary btn-sm" data-toggle-income-source="' + esc(source.id) + '" data-active="' + (isActive ? '1' : '0') + '"><i class="bi ' + (isActive ? 'bi-pause-circle' : 'bi-play-circle') + '"></i> ' + (isActive ? 'إيقاف' : 'تفعيل') + '</button>' +
+        '<button type="button" class="btn btn-outline-danger btn-sm" data-delete-income-source="' + esc(source.id) + '"><i class="bi bi-trash"></i> حذف</button>' +
+      '</div>' +
+    '</article>';
+  }).join('') : '<div class="income-sources-empty"><span><i class="bi bi-cash-stack"></i></span><strong>لسه مفيش مصادر دخل مسجلة</strong><p>ابدأ بالمصادر الموجودة عندك، زي المرتب أو العمل الحر أو مشروع جانبي. تقدر تضيفها وتعدلها وتوقفها في أي وقت.</p><button type="button" class="btn btn-primary" id="btnAddIncomeSourceEmpty"><i class="bi bi-plus-lg"></i> إضافة أول مصدر</button></div>';
+
+  return '<section class="income-sources-page">' +
+    '<header class="income-sources-hero"><div class="income-sources-hero-copy">' +
+      '<span class="income-sources-eyebrow"><i class="bi bi-cash-stack"></i> تنظيم وتنويع الدخل</span>' +
+      '<h2>مصادر الدخل</h2><p>اجمع كل مصادر دخلك في مكان واحد، وحدد نوع كل مصدر ودوريته والمبلغ المتوقع لو متاح.</p>' +
+      syncMessage +
+    '</div><button type="button" class="btn btn-primary income-source-primary-action" id="btnAddIncomeSource"><i class="bi bi-plus-lg"></i> مصدر دخل جديد</button></header>' +
+    (!cloudSettingsInitialized
+      ? '<div class="income-sources-sync-warning"><i class="bi bi-info-circle"></i><div><strong>مزامنة الإعدادات غير مؤكدة</strong><p>قبل تعديل المصادر، افتح الإعدادات وتأكد من مزامنة هذا الجهاز حتى لا تضيع تغييراتك عند تحميل البيانات المشتركة.</p><button type="button" class="btn btn-outline-primary btn-sm" data-tab="set">فتح الإعدادات</button></div></div>'
+      : '') +
+    '<div class="income-source-kpis">' +
+      '<article><span>مصادر نشطة</span><strong>' + activeCount + '</strong><small>المصادر المتاحة حاليًا</small></article>' +
+      '<article><span>مصادر متوقفة</span><strong>' + inactiveCount + '</strong><small>محفوظة دون حذف بياناتها</small></article>' +
+      '<article><span>أنواع دخل مختلفة</span><strong>' + usedKinds.size + '</strong><small>لتقييم تنويع دخلك</small></article>' +
+    '</div>' +
+    '<div class="income-sources-note"><i class="bi bi-info-circle"></i><p>هذا القسم ينظم <strong>تعريفات مصادر الدخل</strong> فقط. لا ينشئ معاملات ولا يغيّر أرصدة الحسابات أو إجمالي الثروة. تسجيل الدخل الفعلي ما زال من قسم «المعاملات» في هذه المرحلة.</p></div>' +
+    '<div class="income-source-list-heading"><div><h3>مصادرك المسجلة</h3><p>تقدر تعدّل بيانات أي مصدر أو توقفه مؤقتًا بدل حذفه.</p></div><span>' + sources.length + ' مصدر</span></div>' +
+    '<div class="income-source-grid">' + cards + '</div>' +
+    '</section>';
+}
+
+function openIncomeSourceModal(id = '') {
+  if (incomeSourceSaveInFlight || cloudSettingsSyncInFlight) {
+    showAppToast('هناك عملية مزامنة جارية. جرّب مرة أخرى بعد انتهائها.', 4000);
+    return;
+  }
+  const source = id ? (S.incomeSources || []).find(item => String(item.id) === String(id)) : null;
+  if (id && !source) {
+    showAppToast('لم أجد مصدر الدخل المطلوب. حدّث الصفحة وحاول مرة أخرى.', 4500);
+    return;
+  }
+  const form = $('#formIncomeSource');
+  form.reset();
+  form.elements.namedItem('id').value = source ? source.id : '';
+  form.elements.namedItem('name').value = source ? source.name : '';
+  form.elements.namedItem('kind').value = source ? source.kind : 'وظيفة ومرتب';
+  form.elements.namedItem('frequency').value = source ? source.frequency : 'شهري';
+  form.elements.namedItem('cur').value = source ? source.cur : 'EGP';
+  form.elements.namedItem('expectedAmount').value = source && source.expectedAmount > 0 ? source.expectedAmount : '';
+  form.elements.namedItem('note').value = source ? source.note : '';
+  $('#incomeSourceModalTitle').textContent = source ? 'تعديل مصدر الدخل' : 'مصدر دخل جديد';
+  $('#btnSaveIncomeSource').innerHTML = source
+    ? '<i class="bi bi-check-lg"></i> حفظ التعديلات'
+    : '<i class="bi bi-check-lg"></i> حفظ المصدر';
+  new bootstrap.Modal($('#modalIncomeSource')).show();
+}
+
+async function persistIncomeSources(nextSources, successMessage) {
+  if (!cloudSettingsInitialized) {
+    alert('قبل إدارة مصادر الدخل، افتح الإعدادات واضغط «مزامنة إعدادات هذا الجهاز» وتأكد من نجاح المزامنة.');
+    return false;
+  }
+  if (incomeSourceSaveInFlight || cloudSettingsSyncInFlight) {
+    showAppToast('هناك عملية حفظ أو مزامنة قيد التنفيذ. انتظر تأكيدها أولًا.', 4000);
+    return false;
+  }
+  const previousSources = S.incomeSources;
+  incomeSourceSaveInFlight = true;
+  S.incomeSources = nextSources;
+  save();
+  render();
+  try {
+    const synced = await saveSharedSettingsToGoogle();
+    if (!synced) {
+      S.incomeSources = previousSources;
+      save();
+      render();
+      showAppToast('لم يتم تأكيد حفظ مصدر الدخل في Google Sheets؛ لذلك رجّعت القائمة لحالتها السابقة لحماية بياناتك.', 6500);
+      return false;
+    }
+    render();
+    showAppToast(successMessage, 4500);
+    return true;
+  } finally {
+    incomeSourceSaveInFlight = false;
+  }
+}
+
 function vSet() {
   const t = CATS.reduce((s, c) => s + (+S.budget[c] || 0), 0);
   const rateHistory = [...(S.rateHistory || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
@@ -1906,7 +2057,7 @@ function render() {
   destroyCharts();
   $$('#navTabs .nav-link').forEach(b => b.classList.toggle('active', b.dataset.tab === S.ui.tab));
   const c = calc();
-  const views = { dash: vDash, tx: vTx, acc: vAcc, ast: vAst, set: vSet, aud: vAud, rec: vRecurring, goal: vFinancialGoals };
+  const views = { dash: vDash, tx: vTx, income: vIncomeSources, acc: vAcc, ast: vAst, set: vSet, aud: vAud, rec: vRecurring, goal: vFinancialGoals };
   const appRoot = $('#app');
   const previousRenderedTab = appRoot.dataset.renderedTab || '';
   const shouldAnimateView = Boolean(previousRenderedTab && previousRenderedTab !== S.ui.tab);
@@ -1941,6 +2092,7 @@ function render() {
 }
 let editingTx = null;
 let txSaveInFlight = false;
+let incomeSourceSaveInFlight = false;
 
 let recurringSaveInFlight = false;
 const recurringGenerationInFlight = new Set();
@@ -2571,6 +2723,53 @@ function openTx(t) {
   new bootstrap.Modal($('#modalTx')).show();
 }
 
+$('#formIncomeSource').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (incomeSourceSaveInFlight || cloudSettingsSyncInFlight) return;
+  const d = Object.fromEntries(new FormData(e.target));
+  const id = String(d.id || '').trim();
+  const name = String(d.name || '').trim();
+  const kind = String(d.kind || '');
+  const frequency = String(d.frequency || '');
+  const cur = String(d.cur || 'EGP');
+  const rawExpected = String(d.expectedAmount ?? '').trim();
+  const expectedAmount = rawExpected === '' ? 0 : Number(rawExpected);
+  const note = String(d.note || '').trim().slice(0, 300);
+
+  if (!name) { alert('اكتب اسمًا واضحًا لمصدر الدخل.'); return; }
+  if (!INCOME_SOURCE_KINDS.includes(kind)) { alert('اختار نوعًا صحيحًا لمصدر الدخل.'); return; }
+  if (!INCOME_SOURCE_FREQUENCIES.includes(frequency)) { alert('اختار دورية صحيحة للدخل.'); return; }
+  if (!['EGP', 'SAR', 'USD'].includes(cur)) { alert('العملة المحددة غير مدعومة.'); return; }
+  if (rawExpected !== '' && (!Number.isFinite(expectedAmount) || expectedAmount <= 0)) {
+    alert('المبلغ المتوقع يجب أن يكون أكبر من صفر، أو اتركه فارغًا لو غير محدد.');
+    return;
+  }
+
+  const previous = id ? (S.incomeSources || []).find(item => String(item.id) === id) : null;
+  if (id && !previous) { alert('لم أجد مصدر الدخل المطلوب؛ حدّث الصفحة وحاول مرة أخرى.'); return; }
+  const duplicateName = (S.incomeSources || []).some(item =>
+    String(item.id) !== id && item.name.trim().toLocaleLowerCase() === name.toLocaleLowerCase()
+  );
+  if (duplicateName) { alert('اسم مصدر الدخل موجود بالفعل؛ استخدم اسمًا مختلفًا لتمييز المصادر.'); return; }
+
+  const source = {
+    id: previous ? previous.id : incomeSourceId(),
+    name: name.slice(0, 100), kind, frequency, cur,
+    expectedAmount: rawExpected === '' ? 0 : expectedAmount,
+    note,
+    active: previous ? previous.active !== false : true,
+    createdAt: previous ? (previous.createdAt || new Date().toISOString()) : new Date().toISOString()
+  };
+  const nextSources = previous
+    ? S.incomeSources.map(item => String(item.id) === id ? source : item)
+    : [...(S.incomeSources || []), source];
+
+  const synced = await persistIncomeSources(nextSources, previous
+    ? 'تم تحديث مصدر الدخل ومزامنته.'
+    : 'تمت إضافة مصدر الدخل ومزامنته.');
+  if (synced) bootstrap.Modal.getInstance($('#modalIncomeSource'))?.hide();
+});
+
 $('#formTx').addEventListener('submit', async e => {
   e.preventDefault();
   if (txSaveInFlight) return;
@@ -2710,6 +2909,27 @@ document.addEventListener('click', e => {
   if (e.target.closest('#btnAddTx')) { openTx(); return; }
   if (e.target.closest('#btnAddTransfer')) { openTransfer(); return; }
   if (e.target.closest('#btnAddGoal') || e.target.closest('#btnAddGoalEmpty')) { openFinancialGoalModal(); return; }
+  if (e.target.closest('#btnAddIncomeSource') || e.target.closest('#btnAddIncomeSourceEmpty')) { openIncomeSourceModal(); return; }
+  const editIncomeSourceBtn = e.target.closest('[data-edit-income-source]');
+  if (editIncomeSourceBtn) { openIncomeSourceModal(editIncomeSourceBtn.dataset.editIncomeSource); return; }
+  const toggleIncomeSourceBtn = e.target.closest('[data-toggle-income-source]');
+  if (toggleIncomeSourceBtn) {
+    const source = (S.incomeSources || []).find(item => String(item.id) === String(toggleIncomeSourceBtn.dataset.toggleIncomeSource));
+    if (!source) { showAppToast('لم أجد مصدر الدخل المطلوب.', 3500); return; }
+    const nextSources = S.incomeSources.map(item => String(item.id) === String(source.id)
+      ? { ...item, active: item.active === false }
+      : item);
+    persistIncomeSources(nextSources, source.active === false ? 'تم تفعيل مصدر الدخل.' : 'تم إيقاف مصدر الدخل مؤقتًا.');
+    return;
+  }
+  const deleteIncomeSourceBtn = e.target.closest('[data-delete-income-source]');
+  if (deleteIncomeSourceBtn) {
+    const source = (S.incomeSources || []).find(item => String(item.id) === String(deleteIncomeSourceBtn.dataset.deleteIncomeSource));
+    if (!source) { showAppToast('لم أجد مصدر الدخل المطلوب.', 3500); return; }
+    if (!confirm('حذف مصدر الدخل «' + source.name + '»؟ لن تتغير أي معاملة مالية مسجلة.')) return;
+    persistIncomeSources(S.incomeSources.filter(item => String(item.id) !== String(source.id)), 'تم حذف مصدر الدخل.');
+    return;
+  }
   const editGoalBtn = e.target.closest('[data-edit-goal]');
   if (editGoalBtn) { openFinancialGoalModal(editGoalBtn.dataset.editGoal); return; }
   const contributeGoalBtn = e.target.closest('[data-goal-contribute]');
