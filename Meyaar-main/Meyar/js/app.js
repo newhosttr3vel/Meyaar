@@ -15,7 +15,7 @@ function isAssetTransaction(type) { return ASSET_TYPES.has(type); }
 function defaultAssetCode(type) { return GOLD_TYPES.has(type) ? GOLD : ''; }
 const PAY = ['نقدي', 'تحويل بنكي', 'بطاقة خصم', 'بطاقة ائتمان', 'ثاندر', 'محفظة إلكترونية', 'أخرى'];
 const MON = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-const COL = ['#0d9488', '#d97706', '#6366f1', '#dc2626', '#8b5cf6', '#16a34a', '#ea580c', '#64748b'];
+const COL = ['#6172f3', '#20b8a8', '#f0b65d', '#8b76e5', '#e9658b', '#4299bc', '#9b80d7', '#7b8ba5'];
 const CURS = { EGP: 'ج.م', SAR: 'ر.س', USD: '$' };
 
 const API_URL = "https://script.google.com/macros/s/AKfycbwJI2_IFB0ukOs1Ufko0wuLob2eAEIFLaPwsglNAeWnMdCUB_7euqWGV4xGzVBH1SflzQ/exec";
@@ -1840,7 +1840,23 @@ function render() {
   $$('#navTabs .nav-link').forEach(b => b.classList.toggle('active', b.dataset.tab === S.ui.tab));
   const c = calc();
   const views = { dash: vDash, tx: vTx, acc: vAcc, ast: vAst, set: vSet, aud: vAud, rec: vRecurring, goal: vFinancialGoals };
-  $('#app').innerHTML = views[S.ui.tab](c);
+  const appRoot = $('#app');
+  const previousRenderedTab = appRoot.dataset.renderedTab || '';
+  const shouldAnimateView = Boolean(previousRenderedTab && previousRenderedTab !== S.ui.tab);
+  appRoot.dataset.renderedTab = S.ui.tab;
+  appRoot.innerHTML = views[S.ui.tab](c);
+  const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (shouldAnimateView && !reducedMotion) {
+    appRoot.classList.remove('view-transition');
+    void appRoot.offsetWidth;
+    appRoot.classList.add('view-transition');
+    const finishViewTransition = event => {
+      if (event.target !== appRoot) return;
+      appRoot.classList.remove('view-transition');
+      appRoot.removeEventListener('animationend', finishViewTransition);
+    };
+    appRoot.addEventListener('animationend', finishViewTransition);
+  }
   if (S.ui.tab === 'dash') { requestAnimationFrame(() => { renderBudgetBars(c); renderExpenseDonut(c); renderAssetDonut(c); renderIncExp(c); renderBalanceLine(c); }); }
   const icon = $('#btnTheme i');
   if (icon) icon.className = document.documentElement.getAttribute('data-theme') === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
