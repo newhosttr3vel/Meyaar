@@ -320,11 +320,7 @@ async function loadSharedSettingsFromGoogle({ renderAfter = true } = {}) {
       // cloud, while non-default local edits and added records are preserved and merged.
       // Same-key conflicts cannot be reconstructed without a historical baseline, so the
       // local version of a non-default edited item wins during this one-time migration.
-      mergedSnapshot = mergeSharedSettingsSnapshots(
-        normalizeSharedSettingsSnapshot(seed()),
-        localSnapshot,
-        remoteSnapshot
-      );
+      mergedSnapshot = mergeLegacySharedSettingsSnapshots(localSnapshot, remoteSnapshot);
     }
 
     S = normalizeState({ ...S, ...mergedSnapshot, ui: S.ui, tx: S.tx });
