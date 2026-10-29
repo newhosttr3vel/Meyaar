@@ -23,6 +23,10 @@ globalThis.__financeTest = {
   transferPairIssues,
   monthDueDate,
   recurringOccurrenceKey,
+  incomeSourceId,
+  INCOME_SOURCE_KINDS,
+  INCOME_SOURCE_FREQUENCIES,
+  sharedSettingsPayload,
   goalProgress,
   goalMonthsRemaining,
   goalMonthlyRequired,
@@ -127,20 +131,29 @@ assert.match(html, /id="txFxPreview"/, 'The transaction FX preview is visible to
 assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal opener exists');
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
-assert.match(html, /style\.css\?v=20261029-dashboard11/, 'Updated CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-dashboard9/, 'Updated JS cache version is active');
+assert.match(html, /style\.css\?v=20261029-income1/, 'Updated CSS cache version is active');
+assert.match(html, /app\.js\?v=20261029-income1/, 'Updated JS cache version is active');
 assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
 assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
 assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists');
 for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory', 'recAccount', 'recStartDate', 'recDueDay', 'recReminderDays']) {
   assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
 }
-assert.match(html, /style\.css\?v=20261029-dashboard11/, 'Recurring CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-dashboard9/, 'Recurring JS cache version is active');
+assert.match(html, /style\.css\?v=20261029-income1/, 'Recurring CSS cache version is active');
+assert.match(html, /app\.js\?v=20261029-income1/, 'Recurring JS cache version is active');
 assert.match(html, /id="btnSidebarToggle"/, 'The sidebar toggle is present');
 assert.match(html, /id="appSidebar"/, 'The collapsible sidebar is present');
 assert.match(html, /id="sidebarBackdrop"/, 'The sidebar backdrop is present');
-for (const tab of ['dash', 'tx', 'rec', 'goal', 'acc', 'ast', 'set', 'aud']) {
+assert.match(html, /id="modalIncomeSource"/, 'The income source editor modal exists');
+assert.match(html, /id="formIncomeSource"/, 'The income source form exists');
+assert.match(html, /data-tab="income"/, 'Income sources navigation is present');
+for (const id of ['incomeSourceName', 'incomeSourceKind', 'incomeSourceFrequency', 'incomeSourceCurrency', 'incomeSourceExpected', 'incomeSourceNote']) {
+  assert.ok(html.includes('id="' + id + '"'), 'Income source form field ' + id + ' exists');
+}
+assert.match(source, /function vIncomeSources\(\)/, 'The income sources view is wired');
+assert.match(source, /incomeSources:\s*S\.incomeSources/, 'Income sources are included in shared settings');
+assert.match(source, /لا ينشئ معاملات ولا يغيّر أرصدة الحسابات أو إجمالي الثروة/, 'Income source catalogue is separate from transaction balances');
+for (const tab of ['dash', 'tx', 'income', 'rec', 'goal', 'acc', 'ast', 'set', 'aud']) {
   assert.ok(html.includes('data-tab="' + tab + '"'), 'Sidebar navigation tab ' + tab + ' exists');
 }
 assert.match(source, /function setSidebarOpen\(open\)/, 'Sidebar open and close behavior exists');
@@ -178,6 +191,30 @@ assert.match(css, /\.dashboard-header/, 'Dashboard title and report filters use 
 assert.match(css, /\.dashboard-more > summary/, 'The expandable analytics section has clear summary styling');
 assert.match(css, /body\s*\{\s*padding-bottom:\s*0 !important/s, 'The old mobile bottom navigation spacing is removed');
 assert.match(css, /\.recurring-hero/, 'The recurring page has its own visual treatment');
+
+// Income source definitions are metadata only: they are normalized and shared,
+// but do not generate or mutate financial transactions.
+assert.ok(api.INCOME_SOURCE_KINDS.includes('وظيفة ومرتب'), 'A salary source type is available');
+assert.ok(api.INCOME_SOURCE_FREQUENCIES.includes('شهري'), 'Monthly income frequency is available');
+const sourceFixture = {
+  id: 'INC-TEST-001', name: 'الراتب', kind: 'وظيفة ومرتب',
+  frequency: 'شهري', cur: 'EGP', expectedAmount: 12000, note: '',
+  active: true, createdAt: '2026-10-29T00:00:00.000Z'
+};
+const incomeTxFixture = {
+  id: 771, date: '2026-03-15', name: 'راتب مارس', type: 'دخل', cat: 'دخل',
+  amt: 100, fee: 0, pay: 'نقدي', acc: 'CASH', code: '', qty: '', price: '',
+  note: '', cur: 'USD', st: 'سليم'
+};
+api.setState(makeState({ tx: [incomeTxFixture], incomeSources: [] }));
+const incomeWithoutSource = api.calc().inc;
+api.setState(makeState({ tx: [incomeTxFixture], incomeSources: [sourceFixture] }));
+const incomeWithSource = api.calc().inc;
+assert.equal(incomeWithSource, incomeWithoutSource, 'Adding a source must not alter calculated transaction income');
+assert.equal(api.getState().tx[0].amt, 100, 'Adding a source must not change existing transaction amounts');
+assert.equal(api.getState().incomeSources.length, 1, 'Income source definitions are retained in normalized state');
+assert.equal(api.sharedSettingsPayload().incomeSources.length, 1, 'Income source definitions are included in shared settings');
+assert.ok(api.incomeSourceId().startsWith('INC-'), 'Income source IDs use their own namespace');
 assert.match(css, /#modalRecurring[\s\S]*?overflow-y:auto/, 'The recurring modal has a mobile scroll layout');
 assert.match(source, /function checkRecurringReminders\(\)/, 'Recurring reminders are checked while the site is open');
 assert.match(source, /async function generateRecurringOccurrence\(scheduleId, dueDate\)/, 'Occurrence generation is implemented');
