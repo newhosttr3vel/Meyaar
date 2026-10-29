@@ -933,7 +933,6 @@ async function saveSharedSettingsToGoogle({ manual = false } = {}) {
         'لم تؤكد Google حفظ الإعدادات المشتركة. حدّث كود Apps Script وانشر إصدارًا جديدًا.');
     }
 
-    cloudPlannerSupported = (Array.isArray(result.supportedKeys) && result.supportedKeys.includes('plannerTasks')) || (Object.prototype.hasOwnProperty.call(result.state, 'plannerTasks') && Array.isArray(result.state.plannerTasks));
     const serverSnapshot = normalizeSharedSettingsSnapshot(result.state);
     const localAtResponse = normalizeSharedSettingsSnapshot(sharedSettingsPayload());
     // Keep edits made while the request was in flight, while also incorporating
