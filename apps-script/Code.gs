@@ -441,7 +441,7 @@ function getTasksSheet() {
 
 function isValidPlannerDate(value) {
   const date = normalizeDate(value);
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const parsed = new Date(date + 'T00:00:00Z');
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
 }
@@ -466,8 +466,8 @@ function normalizePlannerTask(input) {
   if (!id) throw new Error('Task ID is required.');
   if (!title) throw new Error('Task title is required.');
   if (!isValidPlannerDate(date)) throw new Error('Task date must be a valid YYYY-MM-DD date.');
-  if (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(startTime) ||
-      !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(endTime) ||
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) ||
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime) ||
       endTime <= startTime) {
     throw new Error('Task end time must be later than its start time.');
   }
