@@ -561,7 +561,7 @@ function render() {
   destroyCharts();
   $$('#navTabs .nav-link').forEach(b => b.classList.toggle('active', b.dataset.tab === S.ui.tab));
   const c = calc();
-  const views = { dash: vDash, tx: vTx, income: vIncomeSources, acc: vAcc, ast: vAst, set: vSet, aud: vAud, rec: vRecurring, goal: vFinancialGoals };
+  const views = { dash: vDash, tx: vTx, income: vIncomeSources, plan: vPlanner, acc: vAcc, ast: vAst, set: vSet, aud: vAud, rec: vRecurring, goal: vFinancialGoals };
   const appRoot = $('#app');
   const previousRenderedTab = appRoot.dataset.renderedTab || '';
   const shouldAnimateView = Boolean(previousRenderedTab && previousRenderedTab !== S.ui.tab);
