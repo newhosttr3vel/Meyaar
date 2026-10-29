@@ -3641,3 +3641,41 @@ body.sidebar-open {
   }
 }
 
+/* Dashboard primary summaries: side-by-side on wide screens, stacked on compact screens. */
+.dashboard-primary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  align-items: stretch;
+  gap: 1rem;
+}
+.dashboard-primary-grid > .dashboard-safe-spend,
+.dashboard-primary-grid > .dashboard-wealth-card {
+  min-width: 0;
+  min-height: 0 !important;
+  height: 100%;
+  margin: 0 !important;
+}
+.dashboard-primary-grid > .dashboard-safe-spend {
+  order: 0;
+  align-self: stretch;
+}
+.dashboard-primary-grid > .dashboard-wealth-card {
+  order: 1;
+  align-self: stretch;
+}
+@media (max-width: 1199.98px) {
+  .dashboard-primary-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: .9rem;
+  }
+  .dashboard-primary-grid > .dashboard-safe-spend,
+  .dashboard-primary-grid > .dashboard-wealth-card {
+    height: auto;
+  }
+}
+@media (max-width: 767.98px) {
+  .dashboard-primary-grid {
+    gap: .8rem;
+  }
+}
+
