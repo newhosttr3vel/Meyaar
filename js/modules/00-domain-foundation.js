@@ -502,6 +502,17 @@ function mergeSharedSettingsSnapshots(baseSnapshot, localSnapshot, remoteSnapsho
   return normalizeSharedSettingsSnapshot(merged);
 }
 
+function mergeLegacySharedSettingsSnapshots(localSnapshot, remoteSnapshot) {
+  // On the first release with baseline tracking there is no historical cloud snapshot
+  // on existing browsers. Comparing against seed defaults prevents default values from
+  // overriding cloud values, while retaining non-default local edits and additions.
+  return mergeSharedSettingsSnapshots(
+    normalizeSharedSettingsSnapshot(seed()),
+    localSnapshot,
+    remoteSnapshot
+  );
+}
+
 function setCloudSettingsBaseline(snapshot, revision = 0) {
   cloudSettingsBaseline = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
     ? normalizeSharedSettingsSnapshot(snapshot)
