@@ -257,7 +257,7 @@ for (const id of ['incomeSourceName', 'incomeSourceKind', 'incomeSourceFrequency
   assert.ok(html.includes('id="' + id + '"'), 'Income source form field ' + id + ' exists');
 }
 assert.match(source, /function vIncomeSources\(\)/, 'The income sources view is wired');
-assert.match(source, /incomeSources:\s*S\.incomeSources/, 'Income sources are included in shared settings');
+assert.match(source, /incomeSources:\s*source\.incomeSources/, 'Income sources are included in shared settings');
 assert.match(source, /لا ينشئ معاملات ولا يغيّر أرصدة الحسابات أو إجمالي الثروة/, 'Income source catalogue is separate from transaction balances');
 for (const tab of ['dash', 'tx', 'income', 'rec', 'goal', 'acc', 'ast', 'set', 'aud']) {
   assert.ok(html.includes('data-tab="' + tab + '"'), 'Sidebar navigation tab ' + tab + ' exists');
