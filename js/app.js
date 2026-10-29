@@ -35,6 +35,17 @@ let cloudSettingsRevision = 0;
 let googleTransactionsLoaded = false;
 let googleRemoteTransactions = [];
 
+// Planner tasks use the dedicated TASKS sheet, independent from financial transaction/settings sync.
+let plannerSaveInFlight = false;
+let plannerLoadInFlight = false;
+let plannerEditingTaskId = '';
+let cloudPlannerSupported = false;
+let plannerCloudInitialized = false;
+let plannerCloudStatus = 'لم يتم تحميل المهام من Google Sheets بعد';
+let plannerCloudLastUpdated = '';
+let plannerDeletedIds = new Set();
+let plannerLegacyBaselineTasks = [];
+
 // The Notes column is the shared display text because the sheet has no separate Name column.
 function googleNotes(tx) {
   if (!tx) return '';
@@ -376,7 +387,7 @@ function numericCell(value, fallback = '') {
 
 const SHARED_SETTING_KEYS = [
   'rates', 'baseRates', 'rateHistory', 'recurringSchedules',
-  'generatedOccurrences', 'financialGoals', 'incomeSources', 'plannerTasks',
+  'generatedOccurrences', 'financialGoals', 'incomeSources',
   'budget', 'warn', 'accounts', 'prices'
 ];
 const SHARED_SETTING_COLLECTION_KEYS = {
@@ -385,7 +396,6 @@ const SHARED_SETTING_COLLECTION_KEYS = {
   generatedOccurrences: item => String(item && item.key || ''),
   financialGoals: item => String(item && item.id || ''),
   incomeSources: item => String(item && item.id || ''),
-  plannerTasks: item => String(item && item.id || ''),
   accounts: item => String(item && item.code || ''),
   prices: item => String(item && item.code || '')
 };
@@ -401,7 +411,6 @@ function sharedSettingsPayload(state = S) {
     generatedOccurrences: source.generatedOccurrences,
     financialGoals: source.financialGoals,
     incomeSources: source.incomeSources,
-    plannerTasks: source.plannerTasks,
     budget: source.budget,
     warn: source.warn,
     accounts: source.accounts,
@@ -1334,6 +1343,10 @@ try { S = normalizeState(JSON.parse(localStorage.getItem(KEY))); }
 catch (e) { S = seed(); }
 
 try {
+  plannerLegacyBaselineTasks = S.__cloudSettingsBaseline &&
+    Array.isArray(S.__cloudSettingsBaseline.plannerTasks)
+      ? sharedSettingsClone(S.__cloudSettingsBaseline.plannerTasks)
+      : [];
   cloudSettingsBaseline = S.__cloudSettingsBaseline
     ? normalizeSharedSettingsSnapshot(S.__cloudSettingsBaseline)
     : null;
