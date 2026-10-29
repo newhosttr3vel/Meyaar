@@ -287,10 +287,15 @@ assert.match(html, /data-tab="income"/, 'Income sources navigation is present');
 for (const id of ['incomeSourceName', 'incomeSourceKind', 'incomeSourceFrequency', 'incomeSourceCurrency', 'incomeSourceExpected', 'incomeSourceNote']) {
   assert.ok(html.includes('id="' + id + '"'), 'Income source form field ' + id + ' exists');
 }
+assert.match(source, /function vPlanner\(\)/, 'The daily and weekly planner view is wired');
+assert.match(source, /plannerTasks:\s*source\.plannerTasks/, 'Planner tasks are stored in the shared settings payload');
+assert.match(source, /plannerChangedInRequest/, 'Planner changes are protected against an outdated Apps Script API');
+assert.match(source, /function plannerWeekStart\(value\)/, 'The weekly planner has a stable week calculation');
+assert.match(source, /DB_TRANSACTIONS/, 'Existing transaction storage contract remains available');
 assert.match(source, /function vIncomeSources\(\)/, 'The income sources view is wired');
 assert.match(source, /incomeSources:\s*source\.incomeSources/, 'Income sources are included in shared settings');
 assert.match(source, /لا ينشئ معاملات ولا يغيّر أرصدة الحسابات أو إجمالي الثروة/, 'Income source catalogue is separate from transaction balances');
-for (const tab of ['dash', 'tx', 'income', 'rec', 'goal', 'acc', 'ast', 'set', 'aud']) {
+for (const tab of ['dash', 'tx', 'income', 'plan', 'rec', 'goal', 'acc', 'ast', 'set', 'aud']) {
   assert.ok(html.includes('data-tab="' + tab + '"'), 'Sidebar navigation tab ' + tab + ' exists');
 }
 assert.match(source, /function setSidebarOpen\(open\)/, 'Sidebar open and close behavior exists');
