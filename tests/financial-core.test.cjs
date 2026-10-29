@@ -172,6 +172,35 @@ assert.deepEqual(
   'A local removal is merged while unrelated records added remotely are retained'
 );
 
+// First sync after an old browser upgrade: seeded defaults must not overwrite remote edits,
+// and non-default local settings must not be discarded just because no baseline exists yet.
+const legacyDefaults = JSON.parse(JSON.stringify(api.sharedSettingsPayload(api.seed())));
+const legacyLocal = JSON.parse(JSON.stringify(legacyDefaults));
+const legacyRemote = JSON.parse(JSON.stringify(legacyDefaults));
+legacyLocal.accounts.find(item => item.code === 'CASH').name = 'خزنة البيت';
+legacyLocal.incomeSources.push({
+  id: 'INC-LEGACY-DESKTOP', name: 'مصدر محلي قديم', kind: 'عمل حر',
+  frequency: 'غير منتظم', cur: 'EGP', expectedAmount: 0, note: '', active: true, createdAt: ''
+});
+legacyRemote.accounts.find(item => item.code === 'BANK').name = 'البنك بعد تعديل الموبايل';
+legacyRemote.rates.SAR = 13.75;
+legacyRemote.incomeSources.push({
+  id: 'INC-LEGACY-MOBILE', name: 'مصدر مضاف من الموبايل', kind: 'مبيعات',
+  frequency: 'غير منتظم', cur: 'EGP', expectedAmount: 0, note: '', active: true, createdAt: ''
+});
+const mergedLegacy = api.mergeLegacySharedSettingsSnapshots(legacyLocal, legacyRemote);
+assert.equal(mergedLegacy.accounts.find(item => item.code === 'CASH').name, 'خزنة البيت',
+  'A non-default local account edit is preserved on first sync after upgrade');
+assert.equal(mergedLegacy.accounts.find(item => item.code === 'BANK').name, 'البنك بعد تعديل الموبايل',
+  'An untouched local default does not overwrite an account changed in the cloud');
+assert.equal(mergedLegacy.rates.SAR, 13.75,
+  'Untouched local default rates do not replace the remote exchange rate');
+assert.deepEqual(
+  JSON.parse(JSON.stringify(mergedLegacy.incomeSources.map(item => item.id).sort())),
+  ['INC-LEGACY-DESKTOP', 'INC-LEGACY-MOBILE'],
+  'Legacy local sources and new mobile sources survive the first baseline-aware merge'
+);
+
 // Historical FX: old baseline before the first recorded rate, then effective-dated rates.
 api.setState(makeState());
 assert.equal(api.toEGP(100, 'USD', '2026-01-15'), 4850, 'Baseline rate applies before first historical record');
