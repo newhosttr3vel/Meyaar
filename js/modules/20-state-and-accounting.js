@@ -244,6 +244,10 @@ try { S = normalizeState(JSON.parse(localStorage.getItem(KEY))); }
 catch (e) { S = seed(); }
 
 try {
+  plannerLegacyBaselineTasks = S.__cloudSettingsBaseline &&
+    Array.isArray(S.__cloudSettingsBaseline.plannerTasks)
+      ? sharedSettingsClone(S.__cloudSettingsBaseline.plannerTasks)
+      : [];
   cloudSettingsBaseline = S.__cloudSettingsBaseline
     ? normalizeSharedSettingsSnapshot(S.__cloudSettingsBaseline)
     : null;

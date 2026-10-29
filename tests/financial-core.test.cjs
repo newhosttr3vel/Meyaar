@@ -166,19 +166,19 @@ const taskFixture = (id, title, date) => ({
   id, title, date, startTime: '09:00', endTime: '10:00', category: 'تعلم',
   priority: 'متوسطة', status: 'todo', note: '', createdAt: '2026-10-29T08:00:00Z', updatedAt: ''
 });
-sharedBase.plannerTasks = [taskFixture('TASK-BASE', 'مهمة قديمة', '2026-10-31')];
-sharedLocal.plannerTasks = [...sharedBase.plannerTasks, taskFixture('TASK-PC', 'مهمة الكمبيوتر', '2026-11-01')];
-sharedRemote.plannerTasks = [...sharedBase.plannerTasks, taskFixture('TASK-MOBILE', 'مهمة الموبايل', '2026-11-02')];
-const mergedPlanner = api.mergeSharedSettingsSnapshots(sharedBase, sharedLocal, sharedRemote);
-assert.deepEqual(
-  JSON.parse(JSON.stringify(mergedPlanner.plannerTasks.map(item => item.id).sort())),
-  ['TASK-BASE', 'TASK-MOBILE', 'TASK-PC'],
-  'Concurrent planner tasks created on desktop and mobile are both preserved'
+const withPlannerTasks = {
+  ...sharedBase,
+  plannerTasks: [taskFixture('TASK-BASE', 'مهمة من جدول المهام', '2026-10-31')]
+};
+assert.equal(
+  Object.prototype.hasOwnProperty.call(api.sharedSettingsPayload(withPlannerTasks), 'plannerTasks'),
+  false,
+  'Planner tasks are excluded from the financial settings payload and use the dedicated TASKS sheet'
 );
-assert.equal(Object.prototype.hasOwnProperty.call(mergedPlanner, 'tx'), false,
-  'Planner synchronization never adds transaction rows to the shared settings payload');
 assert.equal(Object.prototype.hasOwnProperty.call(mergedShared, 'tx'), false,
-  'The shared settings payload never includes transaction rows');
+  'Financial settings never include transaction rows');
+assert.equal(Object.prototype.hasOwnProperty.call(api.sharedSettingsPayload(withPlannerTasks), 'tx'), false,
+  'The financial settings payload remains separate from transaction records');
 
 const sharedDeleteLocal = JSON.parse(JSON.stringify(sharedBase));
 sharedDeleteLocal.incomeSources = [];
@@ -284,7 +284,7 @@ assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal o
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
 assert.match(html, /style\.css\?v=20261029-planner1/, 'Updated CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-planner1/, 'Updated JS cache version is active');
+assert.match(html, /app\.js\?v=20261029-tasksheet2/, 'Updated JS cache version is active');
 assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
 assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
 assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists');
@@ -292,7 +292,7 @@ for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory
   assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
 }
 assert.match(html, /style\.css\?v=20261029-planner1/, 'Recurring CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-planner1/, 'Recurring JS cache version is active');
+assert.match(html, /app\.js\?v=20261029-tasksheet2/, 'Recurring JS cache version is active');
 assert.match(html, /id="btnSidebarToggle"/, 'The sidebar toggle is present');
 assert.match(html, /id="appSidebar"/, 'The collapsible sidebar is present');
 assert.match(html, /id="sidebarBackdrop"/, 'The sidebar backdrop is present');
@@ -303,8 +303,20 @@ for (const id of ['incomeSourceName', 'incomeSourceKind', 'incomeSourceFrequency
   assert.ok(html.includes('id="' + id + '"'), 'Income source form field ' + id + ' exists');
 }
 assert.match(source, /function vPlanner\(\)/, 'The daily and weekly planner view is wired');
-assert.match(source, /plannerTasks:\s*source\.plannerTasks/, 'Planner tasks are stored in the shared settings payload');
-assert.match(source, /plannerChangedInRequest/, 'Planner changes are protected against an outdated Apps Script API');
+assert.doesNotMatch(source, /plannerTasks:\s*source\.plannerTasks/, 'Planner tasks do not ride in the shared financial settings payload');
+assert.match(source, /async function loadPlannerTasksFromGoogle/, 'Planner tasks load from the TASKS sheet endpoint');
+assert.match(source, /action: 'savetask'/, 'Planner edits use a single-task save endpoint');
+assert.match(source, /action: 'deletetask'/, 'Planner deletion uses a task tombstone endpoint');
+assert.match(source, /expectedUpdatedAt/, 'Planner edits detect cross-device conflicts');
+assert.match(source, /setInterval\(\(\) =>[\s\S]*?\}, 15000\)/, 'Planner tasks refresh every 15 seconds while the planner is open');
+assert.match(appsScriptCode, /TASKS_SHEET_NAME:\s*'TASKS'/, 'Apps Script uses the dedicated TASKS worksheet');
+assert.match(appsScriptCode, /if \(action === 'tasks'\)/, 'Apps Script exposes a task-list endpoint');
+assert.match(appsScriptCode, /action === 'savetask'/, 'Apps Script saves tasks independently');
+assert.match(appsScriptCode, /action === 'deletetask'/, 'Apps Script deletes tasks with tombstones');
+assert.match(appsScriptCode, /migrateLegacyPlannerTasksIfNeeded/, 'Legacy tasks are migrated without deleting the old recovery copy');
+assert.match(appsScriptCode, /TASK_CONFLICT/, 'Apps Script rejects stale edits rather than silently overwriting another device');
+assert.match(appsScriptCode, /SHEET_NAME:\s*'DB_TRANSACTIONS'/, 'The existing transaction sheet name stays unchanged');
+assert.match(appsScriptCode, /const sheet = getTransactionsSheet\(\);/, 'Default transaction handling still uses DB_TRANSACTIONS');
 assert.match(source, /function plannerWeekStart\(value\)/, 'The weekly planner has a stable week calculation');
 assert.match(source, /function vIncomeSources\(\)/, 'The income sources view is wired');
 assert.match(source, /incomeSources:\s*source\.incomeSources/, 'Income sources are included in shared settings');

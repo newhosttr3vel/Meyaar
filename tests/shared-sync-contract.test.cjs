@@ -9,6 +9,7 @@ const root = path.join(__dirname, '..');
 const appsScript = fs.readFileSync(path.join(root, 'apps-script', 'Code.gs'), 'utf8');
 const syncModule = fs.readFileSync(path.join(root, 'js', 'modules', '10-google-sheets-sync.js'), 'utf8');
 const domainModule = fs.readFileSync(path.join(root, 'js', 'modules', '00-domain-foundation.js'), 'utf8');
+const plannerModule = fs.readFileSync(path.join(root, 'js', 'modules', '70-daily-weekly-planner.js'), 'utf8');
 
 assert.doesNotThrow(() => new vm.Script(appsScript, { filename: 'apps-script/Code.gs' }),
   'Apps Script must remain syntactically valid');
@@ -42,22 +43,45 @@ const postTransactionPosition = appsScript.indexOf('const sheet = getTransaction
 assert.ok(postSettingsPosition >= 0 && postTransactionPosition > postSettingsPosition,
   'The settings POST route is handled before opening DB_TRANSACTIONS');
 
+const getTasksPosition = appsScript.indexOf("if (action === 'tasks')");
+assert.ok(getTasksPosition >= 0 && stateGetPosition < getTasksPosition &&
+  getTasksPosition < transactionGetPosition,
+  'The task-list GET route is handled separately before the transaction sheet route');
+
+const saveTaskPosition = appsScript.indexOf("action === 'savetask'");
+const deleteTaskPosition = appsScript.indexOf("action === 'deletetask'");
+assert.ok(saveTaskPosition > postSettingsPosition && saveTaskPosition < postTransactionPosition &&
+  deleteTaskPosition > postSettingsPosition && deleteTaskPosition < postTransactionPosition,
+  'Task save/delete routes are handled before opening DB_TRANSACTIONS');
+
 assert.match(syncModule, /baseState:\s*baseSnapshot/,
   'The frontend sends the base snapshot for conflict-safe merges');
 assert.match(syncModule, /expectedRevision:\s*baseRevision/,
   'The frontend sends the revision it last loaded');
 assert.match(syncModule, /mergeSharedSettingsSnapshots\(/,
   'The frontend reconciles remote updates with local pending edits');
-assert.match(domainModule, /plannerTasks:\s*source\.plannerTasks/,
-  'Planner tasks are part of the shared settings payload');
-assert.match(domainModule, /plannerTasks: item => String\(item && item\.id \|\| ''\)/,
-  'Planner tasks merge by stable ID across devices');
-assert.match(appsScript, /plannerTasks: \['id'\]/,
-  'Apps Script merges planner tasks by stable ID');
+assert.doesNotMatch(domainModule, /plannerTasks:\s*source\.plannerTasks/,
+  'Planner tasks are excluded from the financial shared-settings payload');
+assert.doesNotMatch(domainModule, /plannerTasks: item => String\(item && item\.id \|\| ''\)/,
+  'Planner tasks no longer merge through the financial settings collection');
+assert.match(appsScript, /TASKS_SHEET_NAME:\s*'TASKS'/,
+  'The planner has its own TASKS worksheet');
+assert.match(appsScript, /function migrateLegacyPlannerTasksIfNeeded\(sheet\)/,
+  'Legacy tasks migrate into TASKS without deleting the previous recovery copy');
+assert.match(appsScript, /function readPlannerTasks\(sheet\)/,
+  'The server can list active tasks and deletion tombstones');
+assert.match(appsScript, /function savePlannerTask\(sheet, data\)/,
+  'The server persists a single task independently');
+assert.match(appsScript, /function deletePlannerTask\(sheet, data\)/,
+  'The server deletes tasks through tombstones rather than transaction rows');
+assert.match(plannerModule, /async function loadPlannerTasksFromGoogle/,
+  'The planner reads its dedicated worksheet endpoint');
+assert.match(plannerModule, /action: 'savetask'/,
+  'The planner saves single tasks to the dedicated endpoint');
+assert.match(plannerModule, /action: 'deletetask'/,
+  'The planner deletes single tasks through the dedicated endpoint');
 assert.match(appsScript, /supportedKeys: CONFIG\.SHARED_STATE_KEYS\.slice\(\)/,
-  'The API advertises support for new shared collections');
-assert.match(syncModule, /plannerChangedInRequest/,
-  'An outdated API cannot silently discard planner edits');
+  'The shared-settings API continues to advertise its supported collections for compatibility');
 assert.match(domainModule, /incomeSources:\s*source\.incomeSources/,
   'Income sources are part of the shared settings payload');
 assert.match(domainModule, /function mergeSharedSettingsSnapshots\(/,

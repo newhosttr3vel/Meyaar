@@ -40,6 +40,16 @@ const CONFIG = {
   SETTINGS_SHEET_NAME: 'SYS_APP_SETTINGS',
   SETTINGS_RECORD_KEY: 'MEYAAR_SHARED_STATE_V1',
   SETTINGS_HEADERS: ['Key', 'StateJSON', 'UpdatedAt', 'Revision'],
+
+  // Daily/weekly planner tasks live in their own sheet, separate from transactions and settings.
+  TASKS_SHEET_NAME: 'TASKS',
+  TASKS_MIGRATION_PROPERTY: 'MEYAAR_TASKS_MIGRATED_V1',
+  TASKS_HEADERS: [
+    'ID', 'Date', 'StartTime', 'EndTime', 'Title',
+    'Category', 'Priority', 'Status', 'Note',
+    'CreatedAt', 'UpdatedAt', 'DeletedAt'
+  ],
+
   SHARED_STATE_KEYS: [
     'rates', 'baseRates', 'rateHistory', 'recurringSchedules',
     'generatedOccurrences', 'financialGoals', 'incomeSources', 'plannerTasks',
@@ -394,6 +404,323 @@ function getTransactionsSheet() {
 }
 
 /**
+ * Dedicated planner storage.
+ * These functions only access the TASKS sheet and never access DB_TRANSACTIONS.
+ */
+function getTasksSheet() {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName(CONFIG.TASKS_SHEET_NAME);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.TASKS_SHEET_NAME);
+  }
+
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, CONFIG.TASKS_HEADERS.length)
+      .setValues([CONFIG.TASKS_HEADERS]);
+    sheet.setFrozenRows(1);
+    return sheet;
+  }
+
+  const actualHeaders = sheet
+    .getRange(1, 1, 1, CONFIG.TASKS_HEADERS.length)
+    .getDisplayValues()[0]
+    .map(value => String(value).trim());
+
+  if (!CONFIG.TASKS_HEADERS.every((header, index) => actualHeaders[index] === header)) {
+    throw new Error(
+      'The TASKS sheet headers do not match the expected layout. ' +
+      'Expected: ' + CONFIG.TASKS_HEADERS.join(' | ') +
+      '. No existing task rows were changed.'
+    );
+  }
+
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+function isValidPlannerDate(value) {
+  const date = normalizeDate(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const parsed = new Date(date + 'T00:00:00Z');
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
+}
+
+function normalizePlannerTask(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Task must be a JSON object.');
+  }
+
+  const id = String(input.id || '').trim();
+  const title = String(input.title || '').trim().slice(0, 120);
+  const date = normalizeDate(input.date || '');
+  const startTime = String(input.startTime || '').trim();
+  const endTime = String(input.endTime || '').trim();
+  const allowedCategories = ['عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'];
+  const allowedPriorities = ['عالية', 'متوسطة', 'منخفضة'];
+  const category = allowedCategories.includes(input.category) ? input.category : 'شخصي';
+  const priority = allowedPriorities.includes(input.priority) ? input.priority : 'متوسطة';
+  const status = input.status === 'done' ? 'done' : 'todo';
+  const note = String(input.note || '').trim().slice(0, 500);
+
+  if (!id) throw new Error('Task ID is required.');
+  if (!title) throw new Error('Task title is required.');
+  if (!isValidPlannerDate(date)) throw new Error('Task date must be a valid YYYY-MM-DD date.');
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) ||
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime) ||
+      endTime <= startTime) {
+    throw new Error('Task end time must be later than its start time.');
+  }
+
+  return {
+    id,
+    date,
+    startTime,
+    endTime,
+    title,
+    category,
+    priority,
+    status,
+    note,
+    createdAt: String(input.createdAt || ''),
+    updatedAt: String(input.updatedAt || '')
+  };
+}
+
+function plannerTaskFromRow(row, sheetRowNumber) {
+  try {
+    return {
+      ...normalizePlannerTask({
+        id: row[0],
+        date: row[1],
+        startTime: row[2],
+        endTime: row[3],
+        title: row[4],
+        category: row[5],
+        priority: row[6],
+        status: row[7],
+        note: row[8],
+        createdAt: row[9],
+        updatedAt: row[10]
+      }),
+      deletedAt: String(row[11] || '')
+    };
+  } catch (error) {
+    throw new Error(
+      'Invalid planner task data in TASKS sheet row ' + sheetRowNumber + ': ' +
+      (error && error.message ? error.message : String(error))
+    );
+  }
+}
+
+function plannerTaskToRow(task, deletedAt) {
+  return [
+    task.id,
+    task.date,
+    task.startTime,
+    task.endTime,
+    task.title,
+    task.category,
+    task.priority,
+    task.status,
+    task.note,
+    task.createdAt,
+    task.updatedAt,
+    deletedAt || ''
+  ];
+}
+
+/**
+ * One-time migration: copy tasks from the previous shared-settings record into TASKS.
+ * The old settings value is deliberately left untouched as a recovery copy.
+ */
+function migrateLegacyPlannerTasksIfNeeded(sheet) {
+  const properties = PropertiesService.getScriptProperties();
+  if (properties.getProperty(CONFIG.TASKS_MIGRATION_PROPERTY) === '1') return;
+
+  const existingIds = new Set();
+  if (sheet.getLastRow() >= 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, CONFIG.TASKS_HEADERS.length)
+      .getValues()
+      .forEach(row => {
+        const id = String(row[0] || '').trim();
+        if (id) existingIds.add(id);
+      });
+  }
+
+  const sharedSheet = getSharedSettingsSheet();
+  const sharedRecord = readSharedSettingsRecord(sharedSheet);
+  const legacyTasks = sharedRecord.state && Array.isArray(sharedRecord.state.plannerTasks)
+    ? sharedRecord.state.plannerTasks
+    : [];
+
+  const migrationTime = new Date().toISOString();
+  const rowsToAppend = [];
+
+  legacyTasks.forEach(rawTask => {
+    try {
+      const task = normalizePlannerTask(rawTask);
+      if (existingIds.has(task.id)) return;
+      task.createdAt = task.createdAt || migrationTime;
+      task.updatedAt = task.updatedAt || migrationTime;
+      rowsToAppend.push(plannerTaskToRow(task, ''));
+      existingIds.add(task.id);
+    } catch (error) {
+      // Preserve the legacy settings record for recovery if a legacy row is malformed.
+      console.warn('Skipped invalid legacy planner task during migration:', error);
+    }
+  });
+
+  if (rowsToAppend.length) {
+    sheet.getRange(
+      sheet.getLastRow() + 1,
+      1,
+      rowsToAppend.length,
+      CONFIG.TASKS_HEADERS.length
+    ).setValues(rowsToAppend);
+  }
+
+  // Set only after task rows have been written successfully.
+  properties.setProperty(CONFIG.TASKS_MIGRATION_PROPERTY, '1');
+}
+
+function readPlannerTasks(sheet) {
+  const tasks = [];
+  const deletedIds = [];
+  const lastRow = sheet.getLastRow();
+
+  if (lastRow >= 2) {
+    const rows = sheet
+      .getRange(2, 1, lastRow - 1, CONFIG.TASKS_HEADERS.length)
+      .getValues();
+
+    const seenIds = new Set();
+    rows.forEach((row, index) => {
+      const id = String(row[0] || '').trim();
+      if (!id) return;
+      if (seenIds.has(id)) {
+        throw new Error('Duplicate task ID "' + id + '" in TASKS sheet. No task was changed.');
+      }
+      seenIds.add(id);
+
+      const deletedAt = String(row[11] || '');
+      if (deletedAt) {
+        deletedIds.push(id);
+        return;
+      }
+
+      const task = plannerTaskFromRow(row, index + 2);
+      delete task.deletedAt;
+      tasks.push(task);
+    });
+  }
+
+  tasks.sort((a, b) =>
+    a.date.localeCompare(b.date) ||
+    a.startTime.localeCompare(b.startTime) ||
+    a.title.localeCompare(b.title)
+  );
+
+  return {
+    success: true,
+    tasks,
+    deletedIds,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function findPlannerTaskById(sheet, id) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  const rows = sheet
+    .getRange(2, 1, lastRow - 1, CONFIG.TASKS_HEADERS.length)
+    .getValues();
+  const matches = [];
+
+  rows.forEach((row, index) => {
+    if (String(row[0] || '').trim() === id) {
+      matches.push({ rowNumber: index + 2, row });
+    }
+  });
+
+  if (matches.length > 1) {
+    throw new Error('Duplicate task ID "' + id + '" in TASKS sheet. Nothing was changed.');
+  }
+
+  if (!matches.length) return null;
+  const item = matches[0];
+  return {
+    rowNumber: item.rowNumber,
+    task: plannerTaskFromRow(item.row, item.rowNumber)
+  };
+}
+
+function savePlannerTask(sheet, data) {
+  const rawTask = data.task && typeof data.task === 'object' ? data.task : data;
+  const task = normalizePlannerTask(rawTask);
+  const expectedUpdatedAt = String(data.expectedUpdatedAt || '');
+  const existing = findPlannerTaskById(sheet, task.id);
+  const now = new Date().toISOString();
+
+  if (existing) {
+    if (existing.task.deletedAt) {
+      throw new Error('This task was deleted on another device. Refresh the task list before continuing.');
+    }
+    if (!Object.prototype.hasOwnProperty.call(data, 'expectedUpdatedAt') ||
+        expectedUpdatedAt !== existing.task.updatedAt) {
+      throw new Error('TASK_CONFLICT: This task changed on another device. Reload the task list before saving.');
+    }
+
+    task.createdAt = existing.task.createdAt || task.createdAt || now;
+    task.updatedAt = now;
+    sheet.getRange(existing.rowNumber, 1, 1, CONFIG.TASKS_HEADERS.length)
+      .setValues([plannerTaskToRow(task, '')]);
+
+    return { success: true, action: 'savetask', task, updatedAt: now };
+  }
+
+  if (expectedUpdatedAt) {
+    throw new Error('TASK_CONFLICT: This task no longer exists on the server. Reload the task list before saving.');
+  }
+
+  task.createdAt = task.createdAt || now;
+  task.updatedAt = now;
+  const targetRow = Math.max(sheet.getLastRow() + 1, 2);
+  sheet.getRange(targetRow, 1, 1, CONFIG.TASKS_HEADERS.length)
+    .setValues([plannerTaskToRow(task, '')]);
+
+  return { success: true, action: 'savetask', task, created: true, updatedAt: now };
+}
+
+function deletePlannerTask(sheet, data) {
+  const id = String(data.id || '').trim();
+  if (!id) throw new Error('Task ID is required for deletion.');
+
+  const existing = findPlannerTaskById(sheet, id);
+  if (!existing) {
+    // Deletion is idempotent; an already absent task must not be recreated.
+    return { success: true, action: 'deletetask', id, alreadyDeleted: true };
+  }
+  if (existing.task.deletedAt) {
+    return { success: true, action: 'deletetask', id, alreadyDeleted: true };
+  }
+
+  const expectedUpdatedAt = String(data.expectedUpdatedAt || '');
+  if (!Object.prototype.hasOwnProperty.call(data, 'expectedUpdatedAt') ||
+      expectedUpdatedAt !== existing.task.updatedAt) {
+    throw new Error('TASK_CONFLICT: This task changed on another device. Reload the task list before deleting.');
+  }
+
+  const now = new Date().toISOString();
+  const task = { ...existing.task, updatedAt: now };
+  sheet.getRange(existing.rowNumber, 1, 1, CONFIG.TASKS_HEADERS.length)
+    .setValues([plannerTaskToRow(task, now)]);
+
+  return { success: true, action: 'deletetask', id, deletedAt: now };
+}
+
+/**
  * Convert spreadsheet values into JSON-safe values.
  */
 function normalizeCell(value, columnIndex) {
@@ -429,6 +756,20 @@ function doGet(e) {
     const action = String(e && e.parameter && e.parameter.action || '').toLowerCase();
     if (action === 'state') {
       return jsonResponse(getSharedSettingsResponse());
+    }
+
+    if (action === 'tasks') {
+      const lock = LockService.getScriptLock();
+      let lockAcquired = false;
+      try {
+        lock.waitLock(20000);
+        lockAcquired = true;
+        const tasksSheet = getTasksSheet();
+        migrateLegacyPlannerTasksIfNeeded(tasksSheet);
+        return jsonResponse(readPlannerTasks(tasksSheet));
+      } finally {
+        if (lockAcquired) lock.releaseLock();
+      }
     }
 
     // Default GET contract stays unchanged: transaction rows A:L, including headers.
@@ -754,9 +1095,21 @@ function doPost(e) {
 
     const action = String(data.action || 'add').toLowerCase();
 
-    // The settings endpoint uses its own sheet and never reads or writes DB_TRANSACTIONS.
+    // Settings and planner-task endpoints are isolated from DB_TRANSACTIONS.
     if (action === 'savestate') {
       return jsonResponse(saveSharedSettings(data));
+    }
+
+    if (action === 'savetask' || action === 'save_task') {
+      const tasksSheet = getTasksSheet();
+      migrateLegacyPlannerTasksIfNeeded(tasksSheet);
+      return jsonResponse(savePlannerTask(tasksSheet, data));
+    }
+
+    if (action === 'deletetask' || action === 'delete_task') {
+      const tasksSheet = getTasksSheet();
+      migrateLegacyPlannerTasksIfNeeded(tasksSheet);
+      return jsonResponse(deletePlannerTask(tasksSheet, data));
     }
 
     const sheet = getTransactionsSheet();
