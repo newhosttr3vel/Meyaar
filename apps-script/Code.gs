@@ -308,6 +308,7 @@ function getSharedSettingsResponse() {
   return {
     success: true,
     state: record.state,
+    supportedKeys: CONFIG.SHARED_STATE_KEYS.slice(),
     updatedAt: record.updatedAt,
     revision: record.revision
   };
