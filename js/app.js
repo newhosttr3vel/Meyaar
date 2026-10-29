@@ -560,6 +560,7 @@ function normalizeGoogleDate(value) {
   return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 }
 
+
 function sameRemoteCore(tx, remote) {
   return normalizeGoogleDate(tx.date) === normalizeGoogleDate(remote.date) &&
     String(tx.type || '').trim() === String(remote.type || '').trim() &&
@@ -1086,6 +1087,7 @@ async function deleteTransactionFromGoogle(tx) {
   return result;
 }
 
+
 const T = (id, date, name, cat, sub, type, amt, acc, pay, code, qty, price, note, cur = 'EGP') =>
   ({ id, date, name, cat, sub: sub || '', type, amt, fee: 0, pay, acc, code: code || '', qty: qty || '', price: price || '', note: note || '', cur });
 
@@ -1582,6 +1584,7 @@ function calc() {
   };
 }
 
+
 const charts = {};
 function destroyCharts() {
   Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); delete charts[k]; } });
@@ -1645,6 +1648,7 @@ function renderBalanceLine(c) {
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, labels: { color: col.text, font: { family: 'Cairo' } } }, tooltip: { callbacks: { label: ctx => ` الرصيد: ${f(ctx.raw)} ج.م` } } }, scales: { x: { ticks: { color: col.text, font: { size: 10 } }, grid: { color: col.grid } }, y: { ticks: { color: col.text }, grid: { color: col.grid } } } }
   });
 }
+
 
 let appToastTimer = null;
 let appToastNode = null;
@@ -1711,6 +1715,7 @@ function bd(s) {
 function st(s) { return s === 'سليم' ? bd(s) : `<span class="tag tag-er">${s}</span>`; }
 function fillSelect(el, arr, val) { el.innerHTML = arr.map(x => `<option value="${esc(x)}" ${x === val ? 'selected' : ''}>${esc(x)}</option>`).join(''); }
 
+
 function vDash(c) {
   const ys = [];
   for (let y = 2024; y <= 2035; y++) ys.push(y);
@@ -1736,8 +1741,9 @@ function vDash(c) {
 
   const safety = safeToSpendSnapshot(localISODate());
   const safetyUncertain = syncWarnings.length > 0;
-  const safetyStatus = safetyUncertain ? 'مزامنة غير مكتملة' : 'الرصيد الحالي';
-  const safetyAmount = f(safety.available);
+  const safetyStatus = safetyUncertain ? 'مزامنة غير مكتملة' : 'حسب فترة التقرير';
+  // Use the same calculated liquidity total as the account summary and monthly liquidity chart.
+  const safetyAmount = f(c.liq);
   const safetyObligationRows = safety.obligations.slice()
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
     .slice(0, 4);
@@ -1757,7 +1763,7 @@ function vDash(c) {
         <div class="safe-spend-title">
           <span class="safe-spend-eyebrow"><i class="bi bi-wallet2"></i> وضعك المالي الحالي</span>
           <h3 id="safeSpendTitle">رصيد السيولة</h3>
-          <p>إجمالي أرصدة حسابات السيولة بعد احتساب المعاملات المسجلة، دون خصم الالتزامات أو مخصصات الأهداف.</p>
+          <p>إجمالي أرصدة حسابات السيولة حتى نهاية الفترة المحددة، بنفس طريقة احتساب رصيد السيولة في الرسم البياني.</p>
         </div>
         <span class="safe-spend-status ${safety.safe < 0 ? 'is-deficit' : safetyUncertain ? 'is-uncertain' : ''}">${safetyStatus}</span>
       </div>
@@ -1769,7 +1775,7 @@ function vDash(c) {
           <p>الرصيد الإجمالي في الحسابات المصنفة ضمن السيولة.</p>
         </div>
         <div class="dashboard-safe-metrics" aria-label="مكونات تقدير المتاح للصرف">
-          <div class="dashboard-safe-metric"><span>السيولة</span><strong>${f(safety.available)}</strong><small>ج.م.</small></div>
+          <div class="dashboard-safe-metric"><span>إجمالي السيولة</span><strong>${f(c.liq)}</strong><small>ج.م.</small></div>
           <div class="dashboard-safe-metric is-deduction"><span>الالتزامات</span><strong>− ${f(safety.commitments)}</strong><small>ج.م.</small></div>
           <div class="dashboard-safe-metric is-deduction"><span>الأهداف</span><strong>− ${f(safety.reservedGoals)}</strong><small>ج.م.</small></div>
         </div>
@@ -2307,6 +2313,7 @@ function render() {
   const icon = $('#btnTheme i');
   if (icon) icon.className = document.documentElement.getAttribute('data-theme') === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
 }
+
 let editingTx = null;
 let txSaveInFlight = false;
 let incomeSourceSaveInFlight = false;
@@ -3342,6 +3349,7 @@ setInterval(() => {
     $('#plannerTaskForm').contains(document.activeElement);
   if (!plannerFormHasFocus) loadPlannerTasksFromGoogle({ renderAfter: true });
 }, 15000);
+
 /* Daily and weekly planner. Tasks are stored in the dedicated TASKS sheet, never as financial transactions. */
 
 function plannerWeekStart(value) {
