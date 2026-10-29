@@ -23,8 +23,8 @@ function vDash(c) {
 
   const safety = safeToSpendSnapshot(localISODate());
   const safetyUncertain = syncWarnings.length > 0;
-  const safetyStatus = safety.safe < 0 ? 'عجز متوقع' : safetyUncertain ? 'تقدير غير مكتمل' : 'تقدير مبدئي';
-  const safetyAmount = (safety.safe < 0 ? '−' : '') + f(Math.abs(safety.safe));
+  const safetyStatus = safetyUncertain ? 'مزامنة غير مكتملة' : 'الرصيد الحالي';
+  const safetyAmount = f(safety.available);
   const safetyObligationRows = safety.obligations.slice()
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
     .slice(0, 4);
@@ -39,21 +39,21 @@ function vDash(c) {
     : '<p class="note mb-0 mt-2">لا توجد التزامات دورية غير مسجلة ضمن الفترة المحسوبة حسب البيانات المتاحة.</p>';
 
   const safeSpendPanel = `
-    <section class="safe-spend-panel dashboard-safe-spend ${safety.safe < 0 ? 'is-deficit' : ''}" aria-labelledby="safeSpendTitle">
+    <section class="safe-spend-panel dashboard-safe-spend ${safety.available < 0 ? 'is-deficit' : ''}" aria-labelledby="safeSpendTitle">
       <div class="safe-spend-header">
         <div class="safe-spend-title">
-          <span class="safe-spend-eyebrow"><i class="bi bi-shield-check"></i> قرار مالي أوضح</span>
-          <h3 id="safeSpendTitle">المتاح للصرف بأمان</h3>
-          <p>المتبقي بعد خصم الالتزامات غير المسجلة ومخصصات الأهداف.</p>
+          <span class="safe-spend-eyebrow"><i class="bi bi-wallet2"></i> وضعك المالي الحالي</span>
+          <h3 id="safeSpendTitle">رصيد السيولة</h3>
+          <p>إجمالي أرصدة حسابات السيولة بعد احتساب المعاملات المسجلة، دون خصم الالتزامات أو مخصصات الأهداف.</p>
         </div>
         <span class="safe-spend-status ${safety.safe < 0 ? 'is-deficit' : safetyUncertain ? 'is-uncertain' : ''}">${safetyStatus}</span>
       </div>
 
       <div class="dashboard-safe-main">
         <div class="safe-spend-result">
-          <span>${safety.safe < 0 ? 'العجز المتوقع' : 'المتاح التقديري'}</span>
+          <span>إجمالي السيولة</span>
           <strong>${safetyAmount} <small>ج.م.</small></strong>
-          <p>${safety.safe < 0 ? 'راجع الالتزامات قبل أي إنفاق إضافي.' : 'مؤشر للتخطيط، وليس ضمانًا لميزانية الإنفاق.'}</p>
+          <p>الرصيد الإجمالي في الحسابات المصنفة ضمن السيولة.</p>
         </div>
         <div class="dashboard-safe-metrics" aria-label="مكونات تقدير المتاح للصرف">
           <div class="dashboard-safe-metric"><span>السيولة</span><strong>${f(safety.available)}</strong><small>ج.م.</small></div>
@@ -63,9 +63,9 @@ function vDash(c) {
       </div>
 
       <div class="dashboard-safe-bottom">
-        <div class="safe-spend-alert ${safety.safe < 0 ? 'is-deficit' : ''} dashboard-safe-note">
-          <i class="bi ${safety.safe < 0 ? 'bi-exclamation-triangle-fill' : 'bi-info-circle'}"></i>
-          <div><strong>${safety.safe < 0 ? 'الالتزامات المحجوزة أكبر من السيولة المتاحة.' : 'التقدير لا يشمل الطوارئ أو الفواتير غير المسجلة.'}</strong></div>
+        <div class="safe-spend-alert ${safety.available < 0 ? 'is-deficit' : ''} dashboard-safe-note">
+          <i class="bi ${safety.available < 0 ? 'bi-exclamation-triangle-fill' : 'bi-info-circle'}"></i>
+          <div><strong>${safety.available < 0 ? 'إجمالي رصيد السيولة بالسالب؛ راجع الأرصدة والحركات المسجلة.' : 'رصيد السيولة لا يخصم الالتزامات أو مخصصات الأهداف.'}</strong></div>
         </div>
         <div class="safe-spend-facts dashboard-safe-facts">
           <span><b>${safety.overdueCount}</b> متأخر</span>
