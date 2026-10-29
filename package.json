@@ -4,7 +4,8 @@
   "private": true,
   "description": "مِعيار — تطبيق ويب لإدارة الأموال الشخصية",
   "scripts": {
-    "check:syntax": "node --check js/app.js",
+    "build": "node scripts/build.js",
+    "check:syntax": "node scripts/build.js --check && node --check js/app.js && node tests/module-syntax.test.cjs",
     "test": "node tests/financial-core.test.cjs",
     "validate": "npm run check:syntax && npm test"
   },
