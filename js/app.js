@@ -3620,9 +3620,16 @@ async function persistPlannerTaskDeletion(task, successMessage) {
     if (!result || result.success === false) {
       throw new Error((result && (result.message || result.error)) || 'لم تؤكد Google حذف المهمة.');
     }
+
+    // The server has confirmed the tombstone. Apply it locally immediately so a temporary
+    // follow-up read failure cannot make the deleted task appear active on this device.
+    plannerDeletedIds.add(String(task.id));
+    S.plannerTasks = (S.plannerTasks || []).filter(item => String(item.id) !== String(task.id));
+    if (plannerEditingTaskId === task.id) plannerEditingTaskId = '';
+    save();
+
     plannerCloudInitialized = false;
     await loadPlannerTasksFromGoogle({ renderAfter: false });
-    plannerEditingTaskId = '';
     showAppToast(successMessage + ' تمت المزامنة.', 3200);
     return true;
   } catch (error) {
