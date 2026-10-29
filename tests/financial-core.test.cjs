@@ -26,6 +26,7 @@ globalThis.__financeTest = {
   incomeSourceId,
   INCOME_SOURCE_KINDS,
   INCOME_SOURCE_FREQUENCIES,
+  seed,
   sharedSettingsPayload,
   mergeSharedSettingsSnapshots,
   sharedSettingsEqual,
