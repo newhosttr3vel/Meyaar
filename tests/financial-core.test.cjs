@@ -125,7 +125,7 @@ const legacyHtmlPath = path.join(__dirname, '..', 'Meyaar-main', 'Meyar', 'index
 const legacyHtml = fs.readFileSync(legacyHtmlPath, 'utf8');
 assert.match(html, /rel="canonical" href="https:\/\/newhosttr3vel\.github\.io\/Meyaar\//, 'Root app declares the canonical GitHub Pages URL');
 assert.match(html, /og:image" content="https:\/\/newhosttr3vel\.github\.io\/Meyaar\/assets\/meyaar-social\.png"/, 'Social preview image points to the root assets directory');
-assert.match(legacyHtml, /location\.replace\('\.\.\/\.'/,
+assert.ok(legacyHtml.includes("window.location.replace('../../'"),
   'The previous deployed URL redirects to the root app');
 assert.match(html, /id="modalTransfer"/, 'The transfer modal exists');
 assert.match(html, /id="formTransfer" class="tx-modal-form transfer-modal-form"/, 'The transfer form uses the scrolling modal layout');
