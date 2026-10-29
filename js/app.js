@@ -3448,26 +3448,174 @@ function vPlanner() {
     '<div class="planner-week-grid">' + days + '</div></section>';
 }
 
-async function persistPlannerTasks(nextTasks, successMessage) {
-  if (!cloudSettingsInitialized || !cloudPlannerSupported) {
-    showAppToast('المزامنة المشتركة غير جاهزة. لم يتم إرسال التغيير، ولن أسمح بحفظ مهام على جهاز واحد فقط.', 5500);
+
+async function loadPlannerTasksFromGoogle({ renderAfter = true, manual = false } = {}) {
+  if (plannerLoadInFlight) return false;
+  plannerLoadInFlight = true;
+
+  try {
+    const response = await fetch(API_URL + '?action=tasks&_=' + Date.now(), {
+      method: 'GET',
+      cache: 'no-store'
+    });
+    if (!response.ok) throw new Error('Google Sheets HTTP ' + response.status);
+    const result = await response.json();
+
+    if (!result || result.success === false ||
+        !Array.isArray(result.tasks) || !Array.isArray(result.deletedIds)) {
+      throw new Error(
+        'إصدار Apps Script الحالي لا يدعم action=tasks. حدّث apps-script/Code.gs وانشر الإصدار الجديد؛ لم يتم تغيير المعاملات.'
+      );
+    }
+
+    const remoteTasks = normalizeState({ ...S, plannerTasks: result.tasks }).plannerTasks;
+    const remoteIds = new Set(remoteTasks.map(task => String(task.id)));
+    const deletedIds = new Set(result.deletedIds.map(String));
+    const priorBaselineIds = new Set(plannerLegacyBaselineTasks.map(task => String(task && task.id || '')));
+    const localTasks = Array.isArray(S.plannerTasks) ? S.plannerTasks : [];
+
+    // Preserve local-only tasks from the first release, but never resurrect a server
+    // tombstone or re-upload an item that was already part of the prior cloud baseline.
+    const localOnly = localTasks.filter(task =>
+      task && task.id &&
+      !remoteIds.has(String(task.id)) &&
+      !deletedIds.has(String(task.id)) &&
+      !priorBaselineIds.has(String(task.id))
+    );
+
+    const recoveredLocalTasks = [];
+    for (const task of localOnly) {
+      try {
+        const saved = await postGooglePayload({
+          action: 'savetask',
+          task,
+          expectedUpdatedAt: ''
+        });
+        if (saved && saved.task) {
+          const normalized = normalizeState({ ...S, plannerTasks: [saved.task] }).plannerTasks[0];
+          if (normalized) recoveredLocalTasks.push(normalized);
+          remoteIds.add(String(saved.task.id));
+        }
+      } catch (migrationError) {
+        console.warn('تعذر ترحيل مهمة محلية إلى TASKS:', migrationError);
+      }
+    }
+
+    const mergedTasks = [...remoteTasks];
+    recoveredLocalTasks.forEach(task => {
+      if (!mergedTasks.some(item => item.id === task.id)) mergedTasks.push(task);
+    });
+    S.plannerTasks = normalizeState({ ...S, plannerTasks: mergedTasks }).plannerTasks;
+    plannerDeletedIds = deletedIds;
+    save();
+
+    cloudPlannerSupported = true;
+    plannerCloudInitialized = true;
+    plannerCloudStatus = 'تم تحميل المهام من ورقة TASKS';
+    plannerCloudLastUpdated = new Date().toLocaleTimeString('ar-EG', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    return true;
+  } catch (error) {
+    cloudPlannerSupported = false;
+    plannerCloudInitialized = false;
+    plannerCloudStatus = error && error.message
+      ? error.message
+      : 'تعذّر الاتصال بورقة TASKS.';
+    console.error('تعذر تحميل المهام من TASKS:', error);
+    if (manual) showAppToast(plannerCloudStatus, 6500);
+    return false;
+  } finally {
+    plannerLoadInFlight = false;
+    const plannerFormHasFocus = $('#plannerTaskForm') &&
+      $('#plannerTaskForm').contains(document.activeElement);
+    if (renderAfter && S.ui.tab === 'plan' && !plannerFormHasFocus) render();
+  }
+}
+
+async function persistPlannerTask(task, expectedUpdatedAt, successMessage) {
+  if (!plannerCloudInitialized || !cloudPlannerSupported) {
+    showAppToast('المزامنة مع ورقة TASKS غير جاهزة. لم أعتبر المهمة محفوظة على الأجهزة الأخرى.', 5500);
     return false;
   }
-  if (plannerSaveInFlight) return false;
+  if (plannerSaveInFlight || plannerLoadInFlight) return false;
+
   plannerSaveInFlight = true;
-  S.plannerTasks = normalizeState({ ...S, plannerTasks: nextTasks }).plannerTasks;
-  save();
   render();
-  const synced = await saveSharedSettingsToGoogle();
-  plannerSaveInFlight = false;
-  if (synced) {
+  try {
+    const result = await postGooglePayload({
+      action: 'savetask',
+      task,
+      expectedUpdatedAt: String(expectedUpdatedAt || '')
+    });
+    if (!result || result.success === false || !result.task) {
+      throw new Error((result && (result.message || result.error)) || 'لم تؤكد Google حفظ المهمة.');
+    }
+
+    plannerCloudInitialized = false;
+    await loadPlannerTasksFromGoogle({ renderAfter: false });
+    if (!plannerCloudInitialized) {
+      S.plannerTasks = normalizeState({
+        ...S,
+        plannerTasks: [...(S.plannerTasks || []).filter(item => item.id !== result.task.id), result.task]
+      }).plannerTasks;
+      save();
+    }
+    plannerEditingTaskId = '';
+    showAppToast(successMessage + ' تمت مزامنة المهمة.', 3200);
+    return true;
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    if (message.includes('TASK_CONFLICT')) {
+      await loadPlannerTasksFromGoogle({ renderAfter: false });
+      showAppToast('المهمة اتعدّلت من جهاز آخر. حمّلت أحدث نسخة؛ راجعها قبل إعادة التعديل.', 6000);
+    } else {
+      showAppToast('لم يتم تأكيد حفظ المهمة في Google Sheets: ' + message, 6500);
+    }
+    return false;
+  } finally {
+    plannerSaveInFlight = false;
+    render();
+  }
+}
+
+async function persistPlannerTaskDeletion(task, successMessage) {
+  if (!plannerCloudInitialized || !cloudPlannerSupported) {
+    showAppToast('المزامنة مع ورقة TASKS غير جاهزة. لم أعتبر الحذف محفوظًا.', 5500);
+    return false;
+  }
+  if (plannerSaveInFlight || plannerLoadInFlight) return false;
+
+  plannerSaveInFlight = true;
+  render();
+  try {
+    const result = await postGooglePayload({
+      action: 'deletetask',
+      id: task.id,
+      expectedUpdatedAt: String(task.updatedAt || '')
+    });
+    if (!result || result.success === false) {
+      throw new Error((result && (result.message || result.error)) || 'لم تؤكد Google حذف المهمة.');
+    }
+    plannerCloudInitialized = false;
+    await loadPlannerTasksFromGoogle({ renderAfter: false });
     plannerEditingTaskId = '';
     showAppToast(successMessage + ' تمت المزامنة.', 3200);
-  } else {
-    showAppToast('احتفظت بالتغيير على هذا الجهاز مؤقتًا، لكن Google لم تؤكد المزامنة. لا تعتبره محفوظًا على بقية الأجهزة بعد.', 6500);
+    return true;
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    if (message.includes('TASK_CONFLICT')) {
+      await loadPlannerTasksFromGoogle({ renderAfter: false });
+      showAppToast('المهمة اتعدّلت من جهاز آخر؛ حمّلت أحدث نسخة ولم أحذفها.', 6000);
+    } else {
+      showAppToast('لم يتم تأكيد حذف المهمة في Google Sheets: ' + message, 6500);
+    }
+    return false;
+  } finally {
+    plannerSaveInFlight = false;
+    render();
   }
-  render();
-  return synced;
 }
 
 function plannerFormError(message) {
