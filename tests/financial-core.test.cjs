@@ -127,7 +127,7 @@ assert.match(html, /id="txFxPreview"/, 'The transaction FX preview is visible to
 assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal opener exists');
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
-assert.match(html, /style\.css\?v=20261029-dashboard8/, 'Updated CSS cache version is active');
+assert.match(html, /style\.css\?v=20261029-dashboard9/, 'Updated CSS cache version is active');
 assert.match(html, /app\.js\?v=20261029-dashboard8/, 'Updated JS cache version is active');
 assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
 assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
@@ -135,7 +135,7 @@ assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists')
 for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory', 'recAccount', 'recStartDate', 'recDueDay', 'recReminderDays']) {
   assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
 }
-assert.match(html, /style\.css\?v=20261029-dashboard8/, 'Recurring CSS cache version is active');
+assert.match(html, /style\.css\?v=20261029-dashboard9/, 'Recurring CSS cache version is active');
 assert.match(html, /app\.js\?v=20261029-dashboard8/, 'Recurring JS cache version is active');
 assert.match(html, /id="btnSidebarToggle"/, 'The sidebar toggle is present');
 assert.match(html, /id="appSidebar"/, 'The collapsible sidebar is present');
@@ -162,6 +162,9 @@ assert.match(source, /class="dashboard-safe-metrics"/, 'Safe-spend summary uses 
 assert.match(source, /class="dashboard-safe-more"/, 'Safe-spend calculation details are collapsed until requested');
 assert.match(css, /\.dashboard-primary-grid\s*\{/, 'Primary dashboard summary uses a responsive grid');
 assert.match(css, /\.dashboard-safe-metric\s*\{/, 'Compact safe-spend metrics have dedicated styling');
+assert.match(css, /grid-template-areas:\s*"label amount" "note note"/, 'Safe-spend result has a readable two-row hierarchy');
+assert.match(css, /\.dashboard-wealth-legend \.leg-item\s*\{[\s\S]*?border-radius:\s*10px/, 'Wealth breakdown items are separated into compact readable tiles');
+assert.match(css, /\.dashboard-safe-spend\.is-deficit \.safe-spend-result\s*\{[\s\S]*?color-mix\(in srgb, var\(--red\) 8%/, 'A deficit gets a restrained warning treatment');
 assert.match(source, /dashboard-kpi-grid/, 'The dashboard uses a dedicated concise KPI grid');
 assert.match(source, /dashboard-sync-banner/, 'Cloud sync warnings have a dedicated compact banner');
 assert.match(source, /dashboardMoreDetails\.addEventListener\('toggle'/, 'Charts resize when secondary analytics are opened');
