@@ -154,7 +154,7 @@ sharedLocal.rates.SAR = 13.4;
 sharedRemote.rates.USD = 52.25;
 const mergedShared = api.mergeSharedSettingsSnapshots(sharedBase, sharedLocal, sharedRemote);
 assert.deepEqual(
-  mergedShared.incomeSources.map(item => item.id).sort(),
+  JSON.parse(JSON.stringify(mergedShared.incomeSources.map(item => item.id).sort())),
   ['INC-BASE', 'INC-DESKTOP', 'INC-MOBILE'],
   'Concurrent source additions from two devices are both preserved'
 );
@@ -167,7 +167,7 @@ const sharedDeleteLocal = JSON.parse(JSON.stringify(sharedBase));
 sharedDeleteLocal.incomeSources = [];
 const mergedDelete = api.mergeSharedSettingsSnapshots(sharedBase, sharedDeleteLocal, sharedRemote);
 assert.deepEqual(
-  mergedDelete.incomeSources.map(item => item.id).sort(),
+  JSON.parse(JSON.stringify(mergedDelete.incomeSources.map(item => item.id).sort())),
   ['INC-MOBILE'],
   'A local removal is merged while unrelated records added remotely are retained'
 );
