@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node scripts/build.js",
     "check:syntax": "node scripts/build.js --check && node --check js/app.js && node tests/module-syntax.test.cjs",
-    "test": "node tests/financial-core.test.cjs",
+    "test": "node tests/financial-core.test.cjs && node tests/shared-sync-contract.test.cjs",
     "validate": "npm run check:syntax && npm test"
   },
   "engines": {
