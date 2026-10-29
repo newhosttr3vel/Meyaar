@@ -179,9 +179,9 @@ assert.equal(
   'Planner tasks are excluded from the financial settings payload and use the dedicated TASKS sheet'
 );
 assert.equal(Object.prototype.hasOwnProperty.call(mergedShared, 'tx'), false,
-  'Planner synchronization never adds transaction rows to the shared settings payload');
-assert.equal(Object.prototype.hasOwnProperty.call(mergedShared, 'tx'), false,
-  'The shared settings payload never includes transaction rows');
+  'Financial settings never include transaction rows');
+assert.equal(Object.prototype.hasOwnProperty.call(api.sharedSettingsPayload(withPlannerTasks), 'tx'), false,
+  'The financial settings payload remains separate from transaction records');
 
 const sharedDeleteLocal = JSON.parse(JSON.stringify(sharedBase));
 sharedDeleteLocal.incomeSources = [];
