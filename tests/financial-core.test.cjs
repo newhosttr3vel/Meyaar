@@ -301,7 +301,7 @@ assert.equal(shortSafety.shortfall, 6000, 'The forecast exposes the amount of th
 assert.ok(source.includes('safe-spend-panel') && source.includes('safe-spend-assumptions'),
   'Dashboard includes the indicator and an expandable assumptions note');
 assert.match(source, /function safeToSpendSnapshot\(/, 'The safe-to-spend calculation is implemented in the financial core');
-assert.match(source, /التزاماتك وحجوزاتك تتجاوز السيولة الحالية/, 'The dashboard warns when the projected cash is insufficient');
+assert.match(source, /الالتزامات المحجوزة أكبر من السيولة المتاحة/, 'The dashboard warns when reserved commitments exceed available cash');
 assert.match(css, /\.safe-spend-panel/, 'The safe-to-spend indicator has dedicated responsive styling');
 
 
