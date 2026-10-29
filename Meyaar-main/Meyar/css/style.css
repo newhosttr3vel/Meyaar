@@ -2733,3 +2733,209 @@ body {
   #app.view-transition > * { animation: none !important; }
 }
 
+/* =========================================================
+   Soft Sage — a calmer, lower-saturation color system
+   ========================================================= */
+:root {
+  color-scheme: light;
+  --bg: #f4f6f1;
+  --card: #fffefa;
+  --tx: #29352e;
+  --mut: #727f75;
+  --bd: #e2e8df;
+  --ink: #29352e;
+  --ac: #587660;
+  --ac-hover: #47654f;
+  --gold: #c4a773;
+  --red: #b96767;
+  --ok: #3f8069;
+  --warn: #a78245;
+  --sidebar: #293b31;
+  --hero-grad: linear-gradient(125deg, #2c4135 0%, #405d49 54%, #577b69 100%);
+  --shadow: 0 7px 24px rgba(43, 61, 47, .055);
+  --radius: 17px;
+  --surface-muted: #f6f7f3;
+  --focus-ring: rgba(88, 118, 96, .18);
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #151b17;
+  --card: #202822;
+  --tx: #e7ece6;
+  --mut: #a5b1a6;
+  --bd: #354139;
+  --ink: #edf2ec;
+  --ac: #8eac94;
+  --ac-hover: #a5bea8;
+  --gold: #d2bd91;
+  --red: #e29a9a;
+  --ok: #82c0a3;
+  --warn: #dfbf82;
+  --sidebar: #111812;
+  --hero-grad: linear-gradient(125deg, #222f26 0%, #34483a 54%, #3d5e50 100%);
+  --shadow: 0 9px 25px rgba(0, 0, 0, .16);
+  --surface-muted: #252e28;
+  --focus-ring: rgba(142, 172, 148, .2);
+}
+
+body {
+  background:
+    radial-gradient(ellipse at 8% 0%, rgba(126, 153, 125, .075), transparent 38rem),
+    var(--bg);
+  transition: background-color .28s ease, color .28s ease;
+}
+.app-topbar {
+  background:
+    radial-gradient(ellipse at 82% 0%, rgba(151, 177, 146, .12), transparent 25rem),
+    var(--sidebar) !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--gold) 44%, transparent);
+  box-shadow: 0 5px 20px rgba(30, 45, 34, .1) !important;
+}
+.app-sidebar {
+  background:
+    radial-gradient(ellipse at 8% 0%, rgba(142, 172, 148, .11), transparent 20rem),
+    var(--sidebar);
+}
+#appSidebar #navTabs .nav-link:hover {
+  transform: translateX(-2px);
+  background: color-mix(in srgb, var(--ac) 13%, transparent);
+}
+#appSidebar #navTabs .nav-link.active {
+  background: color-mix(in srgb, var(--ac) 21%, transparent);
+  border-color: color-mix(in srgb, var(--ac) 18%, transparent);
+  border-inline-start-color: var(--gold);
+  box-shadow: none;
+}
+.hero-card {
+  background:
+    radial-gradient(ellipse at 92% 0%, rgba(223, 229, 204, .1), transparent 38%),
+    radial-gradient(ellipse at 9% 100%, rgba(135, 185, 160, .1), transparent 40%),
+    var(--hero-grad);
+  border-color: rgba(255, 255, 255, .1);
+  box-shadow: 0 14px 32px rgba(42, 65, 48, .12);
+}
+.kpi-card,
+.box,
+.rec-kpi,
+.rec-schedule-card,
+.goal-card,
+.safe-spend-panel,
+.filter-bar {
+  box-shadow: var(--shadow);
+}
+.kpi-card {
+  background: linear-gradient(145deg, color-mix(in srgb, var(--ac) 1.5%, var(--card)), var(--card) 66%);
+  border-color: color-mix(in srgb, var(--bd) 90%, var(--ac) 10%);
+}
+.kpi-card:nth-child(4) { border-inline-start-color: #879d91; }
+.kpi-card:nth-child(5) { border-inline-start-color: #a79aaf; }
+.kpi-card:nth-child(7) { border-inline-start-color: #79a8a0; }
+.box,
+.filter-bar {
+  border-color: color-mix(in srgb, var(--bd) 94%, var(--ac) 6%);
+}
+.box h3 i,
+.rec-schedule-icon,
+.goal-icon,
+.rec-empty > span,
+.goal-empty > span {
+  color: var(--ac);
+  background: color-mix(in srgb, var(--ac) 8%, var(--card));
+  border-color: color-mix(in srgb, var(--ac) 14%, var(--bd));
+}
+.btn {
+  transition: transform .2s ease, background-color .22s ease, color .2s ease,
+              border-color .22s ease, box-shadow .22s ease;
+}
+.btn-primary {
+  color: #fffefa;
+  background: var(--ac);
+  border-color: var(--ac);
+  background-image: none;
+  box-shadow: 0 4px 11px color-mix(in srgb, var(--ac) 15%, transparent);
+}
+.btn-primary:hover,
+.btn-primary:focus-visible {
+  color: #fffefa;
+  background: var(--ac-hover);
+  border-color: var(--ac-hover);
+  background-position: initial;
+  box-shadow: 0 6px 15px color-mix(in srgb, var(--ac) 18%, transparent);
+  transform: translateY(-1px);
+}
+.btn-outline-primary:hover,
+.btn-outline-primary:focus-visible {
+  color: #fffefa;
+  background: var(--ac);
+  border-color: var(--ac);
+}
+[data-theme="dark"] .btn-primary {
+  color: #17221a;
+  background: var(--ac);
+  border-color: var(--ac);
+}
+[data-theme="dark"] .btn-primary:hover,
+[data-theme="dark"] .btn-primary:focus-visible {
+  color: #17221a;
+  background: var(--ac-hover);
+  border-color: var(--ac-hover);
+}
+[data-theme="dark"] .btn-outline-primary:hover,
+[data-theme="dark"] .btn-outline-primary:focus-visible {
+  color: #17221a;
+  background: var(--ac);
+  border-color: var(--ac);
+}
+.form-control:focus,
+.form-select:focus {
+  transform: none;
+}
+.table {
+  --bs-table-hover-bg: color-mix(in srgb, var(--ac) 4%, var(--card));
+  --bs-table-striped-bg: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.table-responsive {
+  border-color: var(--bd);
+}
+.table-hover tbody tr {
+  transition: background-color .18s ease;
+}
+.modal-backdrop.show {
+  opacity: .46;
+  backdrop-filter: blur(4px);
+}
+.modal-content {
+  box-shadow: 0 22px 64px rgba(26, 39, 29, .18);
+}
+.sidebar-backdrop {
+  background: rgba(22, 32, 25, .42);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+#app.view-transition > * {
+  animation: meyaar-view-enter .28s ease-out both;
+}
+@keyframes meyaar-view-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (hover: hover) and (pointer: fine) {
+  .box:hover,
+  .rec-schedule-card:hover,
+  .safe-spend-panel:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--ac) 17%, var(--bd));
+    box-shadow: 0 11px 27px color-mix(in srgb, var(--tx) 5%, transparent);
+  }
+  .kpi-card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--ac) 22%, var(--bd));
+    box-shadow: 0 13px 27px color-mix(in srgb, var(--ac) 8%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app.view-transition > * {
+    animation: none !important;
+  }
+}
+
