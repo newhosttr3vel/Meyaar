@@ -127,7 +127,7 @@ assert.match(html, /id="txFxPreview"/, 'The transaction FX preview is visible to
 assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal opener exists');
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
-assert.match(html, /style\.css\?v=20261029-dashboard10/, 'Updated CSS cache version is active');
+assert.match(html, /style\.css\?v=20261029-dashboard11/, 'Updated CSS cache version is active');
 assert.match(html, /app\.js\?v=20261029-dashboard9/, 'Updated JS cache version is active');
 assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
 assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
@@ -135,7 +135,7 @@ assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists')
 for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory', 'recAccount', 'recStartDate', 'recDueDay', 'recReminderDays']) {
   assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
 }
-assert.match(html, /style\.css\?v=20261029-dashboard10/, 'Recurring CSS cache version is active');
+assert.match(html, /style\.css\?v=20261029-dashboard11/, 'Recurring CSS cache version is active');
 assert.match(html, /app\.js\?v=20261029-dashboard9/, 'Recurring JS cache version is active');
 assert.match(html, /id="btnSidebarToggle"/, 'The sidebar toggle is present');
 assert.match(html, /id="appSidebar"/, 'The collapsible sidebar is present');
@@ -161,7 +161,8 @@ assert.match(source, /class="dashboard-primary-grid"/, 'Dashboard primary summar
 assert.match(source, /<div class="dashboard-primary-grid" aria-label="الملخص المالي الأساسي">[\s\S]*?\$\{safeSpendPanel\}[\s\S]*?<section class="hero-card dashboard-wealth-card"/, 'Safe-to-spend is shown above total wealth');
 assert.match(source, /class="dashboard-wealth-summary">[\s\S]*?إجمالي الثروة[\s\S]*?تقدير للأصول والسيولة[\s\S]*?class="dashboard-wealth-allocation"[\s\S]*?توزيع الثروة/, 'Wealth allocation is shown below the wealth total and description');
 assert.match(css, /Dashboard summary hierarchy: safe-to-spend first, then wealth and allocation/, 'Dashboard hierarchy styles are present');
-assert.match(css, /Dashboard summary hierarchy: safe-to-spend first, then wealth and allocation[\s\S]*?\.dashboard-primary-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) !important;/, 'Dashboard summary sections stack vertically');
+assert.match(css, /Dashboard primary summaries: side-by-side on wide screens, stacked on compact screens[\s\S]*?\.dashboard-primary-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\) !important;/, 'Wealth and safe-to-spend cards sit side by side on wide screens');
+assert.match(css, /@media \(max-width: 1199\.98px\) \{[\s\S]*?\.dashboard-primary-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) !important;/, 'Primary dashboard cards stack on compact screens');
 assert.match(css, /Dashboard summary hierarchy: safe-to-spend first, then wealth and allocation[\s\S]*?\.dashboard-wealth-main\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) !important;/, 'Wealth total sits above the allocation breakdown');
 assert.match(source, /class="dashboard-safe-metrics"/, 'Safe-spend summary uses compact component metrics');
 assert.match(source, /class="dashboard-safe-more"/, 'Safe-spend calculation details are collapsed until requested');
