@@ -513,7 +513,7 @@ function normalizePlannerTask(input) {
   const date = normalizeDate(input.date || '');
   const startTime = normalizePlannerTime(input.startTime);
   const endTime = normalizePlannerTime(input.endTime);
-  const allowedCategories = ['عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'];
+  const allowedCategories = ['القرآن', 'القراءة', 'التعلم', 'الجيم', 'الصلاة', 'الأكل', 'الراحة', 'عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'];
   const allowedPriorities = ['عالية', 'متوسطة', 'منخفضة'];
   const category = allowedCategories.includes(input.category) ? input.category : 'شخصي';
   const priority = allowedPriorities.includes(input.priority) ? input.priority : 'متوسطة';
