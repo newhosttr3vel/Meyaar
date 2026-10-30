@@ -115,8 +115,8 @@ function vPlanner() {
     '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerDate">اليوم</label><input class="form-control" id="plannerDate" name="date" type="date" required value="' + esc(editing ? editing.date : anchor) + '" ' + (!canEdit ? 'disabled' : '') + '></div>' +
     '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerCategory">نوع النشاط</label><select class="form-select" id="plannerCategory" name="category" ' + (!canEdit ? 'disabled' : '') + '>' +
     ['عمل','تعلم','صحة','شخصي','عائلة','راحة','أخرى'].map(v => '<option ' + ((editing ? editing.category : 'شخصي') === v ? 'selected' : '') + '>' + esc(v) + '</option>').join('') + '</select></div>' +
-    '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerStart">من الساعة</label><input class="form-control" id="plannerStart" name="startTime" type="time" required value="' + esc(editing ? editing.startTime : '09:00') + '" ' + (!canEdit ? 'disabled' : '') + '></div>' +
-    '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerEnd">إلى الساعة</label><input class="form-control" id="plannerEnd" name="endTime" type="time" required value="' + esc(editing ? editing.endTime : '10:00') + '" ' + (!canEdit ? 'disabled' : '') + '></div>' +
+    '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerStart">من الساعة (24 ساعة)</label><input class="form-control" id="plannerStart" name="startTime" type="text" inputmode="numeric" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" placeholder="09:00" title="اكتب الوقت بصيغة 24 ساعة مثل 09:00 أو 22:30" required value="' + esc(editing ? editing.startTime : '09:00') + '" ' + (!canEdit ? 'disabled' : '') + '></div>' +
+    '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerEnd">إلى الساعة (24 ساعة)</label><input class="form-control" id="plannerEnd" name="endTime" type="text" inputmode="numeric" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" placeholder="10:00" title="اكتب الوقت بصيغة 24 ساعة مثل 09:00 أو 23:00" required value="' + esc(editing ? editing.endTime : '10:00') + '" ' + (!canEdit ? 'disabled' : '') + '></div>' +
     '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerPriority">الأولوية</label><select class="form-select" id="plannerPriority" name="priority" ' + (!canEdit ? 'disabled' : '') + '>' +
     ['عالية','متوسطة','منخفضة'].map(v => '<option ' + ((editing ? editing.priority : 'متوسطة') === v ? 'selected' : '') + '>' + esc(v) + '</option>').join('') + '</select></div>' +
     '<div class="col-12 col-md-9"><label class="form-label" for="plannerNote">ملاحظات (اختياري)</label><input class="form-control" id="plannerNote" name="note" maxlength="500" placeholder="خطوات صغيرة أو تفاصيل تساعدك تبدأ" value="' + esc(editing ? editing.note : '') + '" ' + (!canEdit ? 'disabled' : '') + '></div>' +
@@ -322,7 +322,11 @@ document.addEventListener('submit', async event => {
   const title = String(data.title || '').trim();
   if (!title) return plannerFormError('اكتب اسم المهمة أولًا.');
   if (!isValidISODate(data.date)) return plannerFormError('اختار تاريخًا صحيحًا.');
-  if (!data.startTime || !data.endTime || data.endTime <= data.startTime) {
+  const time24 = /^([01]\\d|2[0-3]):[0-5]\\d$/;
+  if (!time24.test(data.startTime || '') || !time24.test(data.endTime || '')) {
+    return plannerFormError('اكتب الوقت بنظام 24 ساعة بصيغة HH:MM، مثل 09:00 أو 22:30.');
+  }
+  if (data.endTime <= data.startTime) {
     return plannerFormError('وقت النهاية لازم يكون بعد وقت البداية.');
   }
   const existing = (S.plannerTasks || []).find(task => task.id === String(data.id || ''));
