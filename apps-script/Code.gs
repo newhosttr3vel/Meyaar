@@ -489,6 +489,20 @@ function isValidPlannerDate(value) {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
 }
 
+function normalizePlannerTime(value) {
+  // Google Sheets may return time-formatted cells as Date objects.
+  // Convert those using the Apps Script timezone before validation.
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'HH:mm');
+  }
+
+  const text = String(value == null ? '' : value).trim();
+  const match = text.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return text;
+
+  return String(match[1]).padStart(2, '0') + ':' + match[2];
+}
+
 function normalizePlannerTask(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw new Error('Task must be a JSON object.');
@@ -497,8 +511,8 @@ function normalizePlannerTask(input) {
   const id = String(input.id || '').trim();
   const title = String(input.title || '').trim().slice(0, 120);
   const date = normalizeDate(input.date || '');
-  const startTime = String(input.startTime || '').trim();
-  const endTime = String(input.endTime || '').trim();
+  const startTime = normalizePlannerTime(input.startTime);
+  const endTime = normalizePlannerTime(input.endTime);
   const allowedCategories = ['عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'];
   const allowedPriorities = ['عالية', 'متوسطة', 'منخفضة'];
   const category = allowedCategories.includes(input.category) ? input.category : 'شخصي';
