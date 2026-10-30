@@ -4140,3 +4140,17 @@ body.sidebar-open {
 @media(max-width:1200px){.planner-week-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.planner-day-card:nth-child(n+5){margin-top:.15rem}}
 @media(max-width:768px){.planner-hero{align-items:stretch;flex-direction:column}.planner-week-nav{justify-content:space-between}.planner-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.planner-week-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.planner-sync-notice{align-items:flex-start;flex-wrap:wrap}.planner-sync-notice>div{flex-basis:calc(100% - 3rem)}}
 @media(max-width:420px){.planner-week-grid{grid-template-columns:minmax(0,1fr)}.planner-day-card{display:grid;grid-template-columns:100px minmax(0,1fr)}.planner-day-header{align-items:flex-start;flex-direction:column;border-bottom:0;border-inline-end:1px solid var(--bd)}.planner-day-tasks{padding:.5rem}.planner-week-nav>div{min-width:0;flex:1}.planner-week-nav strong{font-size:.8rem}.planner-task-actions .btn{font-size:.68rem}}
+
+
+/* Fixed daily routine lanes in weekly planner */
+.planner-day-routine{display:grid;gap:.45rem;margin-bottom:.65rem}
+.planner-routine-card{display:flex;align-items:center;gap:.6rem;padding:.58rem .65rem;border:1px solid var(--bd);border-inline-start:3px solid var(--ac);border-radius:11px;background:var(--surface-muted);min-width:0}
+.planner-routine-card>div{display:grid;gap:.1rem;min-width:0;flex:1}
+.planner-routine-card strong{font-size:.78rem;color:var(--tx)}
+.planner-routine-card small{font-size:.68rem;color:var(--mut);line-height:1.45}
+.planner-routine-icon{display:grid;place-items:center;width:1.9rem;height:1.9rem;border-radius:9px;background:var(--card);color:var(--ac);flex:0 0 1.9rem}
+.planner-routine-tag{font-size:.62rem;font-weight:800;padding:.18rem .4rem;border-radius:999px;background:var(--card);color:var(--mut);white-space:nowrap}
+.planner-routine-card.routine-sleep{border-inline-start-color:#7898aa}
+.planner-routine-card.routine-work{border-inline-start-color:#c1a477}
+.planner-routine-card.routine-development{border-inline-start-color:#56bcae}
+.planner-day-card .planner-day-routine+.planner-day-tasks{border-top:1px dashed var(--bd);padding-top:.65rem}
