@@ -1287,7 +1287,7 @@ function normalizeState(input) {
       date: isValidISODate(item.date) ? item.date : localISODate(),
       startTime: /^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(item.startTime || '')) ? String(item.startTime) : '09:00',
       endTime: /^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(item.endTime || '')) ? String(item.endTime) : '10:00',
-      category: ['عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'].includes(item.category) ? item.category : 'شخصي',
+      category: ['القرآن', 'القراءة', 'التعلم', 'الجيم', 'الصلاة', 'الأكل', 'الراحة', 'عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'].includes(item.category) ? item.category : 'شخصي',
       priority: ['عالية', 'متوسطة', 'منخفضة'].includes(item.priority) ? item.priority : 'متوسطة',
       status: ['todo', 'done'].includes(item.status) ? item.status : 'todo',
       note: String(item.note || '').trim().slice(0, 500),
@@ -3430,6 +3430,13 @@ function vPlanner() {
       '<header class="planner-day-header"><div><strong>' + esc(plannerFormatDate(date, { weekday: 'long' })) +
       '</strong><span>' + esc(plannerFormatDate(date, { day: 'numeric', month: 'short' })) + '</span></div>' +
       '<span class="planner-day-count">' + dayTasks.length + '</span></header>' +
+      '<div class="planner-day-routine">' +
+      '<article class="planner-routine-card routine-sleep"><span class="planner-routine-icon"><i class="bi bi-moon-stars"></i></span><div><strong>النوم</strong><small>22:00 – 05:00 · 7 ساعات · يوميًا</small></div><span class="planner-routine-tag">ثابت</span></article>' +
+      (new Date(date + 'T12:00:00').getDay() === 5 ? '' :
+        '<article class="planner-routine-card routine-work"><span class="planner-routine-icon"><i class="bi bi-briefcase"></i></span><div><strong>الشغل</strong><small>10:00 – 19:00 · 9 ساعات</small></div><span class="planner-routine-tag">ثابت</span></article>') +
+      '<article class="planner-routine-card routine-development"><span class="planner-routine-icon"><i class="bi bi-lightning-charge"></i></span><div><strong>التطوير الشخصي</strong><small>' +
+      (new Date(date + 'T12:00:00').getDay() === 5 ? '05:00 – 22:00 · يوم مفتوح' : '05:00 – 10:00 و19:00 – 22:00') +
+      '</small></div><span class="planner-routine-tag">مرن</span></article></div>' +
       '<div class="planner-day-tasks">' + (dayTasks.length ? dayTasks.map(task =>
         '<article class="planner-task-card ' + (task.status === 'done' ? 'is-done' : '') + ' priority-' +
         (task.priority === 'عالية' ? 'high' : task.priority === 'منخفضة' ? 'low' : 'normal') + '">' +
@@ -3469,7 +3476,7 @@ function vPlanner() {
     '<input class="form-control" id="plannerTitle" name="title" maxlength="120" required placeholder="مثال: ساعة تعلم أو إنجاز مشروع" value="' + esc(editing ? editing.title : '') + '" ' + (!canEdit ? 'disabled' : '') + '></div>' +
     '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerDate">اليوم</label><input class="form-control" id="plannerDate" name="date" type="date" required value="' + esc(editing ? editing.date : anchor) + '" ' + (!canEdit ? 'disabled' : '') + '></div>' +
     '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerCategory">نوع النشاط</label><select class="form-select" id="plannerCategory" name="category" ' + (!canEdit ? 'disabled' : '') + '>' +
-    ['عمل','تعلم','صحة','شخصي','عائلة','راحة','أخرى'].map(v => '<option ' + ((editing ? editing.category : 'شخصي') === v ? 'selected' : '') + '>' + esc(v) + '</option>').join('') + '</select></div>' +
+    ['القرآن','القراءة','التعلم','الجيم','الصلاة','الأكل','الراحة','صحة','شخصي','عائلة','عمل','أخرى'].map(v => '<option ' + ((editing ? editing.category : 'شخصي') === v ? 'selected' : '') + '>' + esc(v) + '</option>').join('') + '</select></div>' +
     '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerStart">من الساعة (24 ساعة)</label><input class="form-control" id="plannerStart" name="startTime" type="text" inputmode="numeric" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" placeholder="09:00" title="اكتب الوقت بصيغة 24 ساعة مثل 09:00 أو 22:30" required value="' + esc(editing ? editing.startTime : '09:00') + '" ' + (!canEdit ? 'disabled' : '') + '></div>' +
     '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerEnd">إلى الساعة (24 ساعة)</label><input class="form-control" id="plannerEnd" name="endTime" type="text" inputmode="numeric" maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" placeholder="10:00" title="اكتب الوقت بصيغة 24 ساعة مثل 09:00 أو 23:00" required value="' + esc(editing ? editing.endTime : '10:00') + '" ' + (!canEdit ? 'disabled' : '') + '></div>' +
     '<div class="col-6 col-md-3 col-xl-2"><label class="form-label" for="plannerPriority">الأولوية</label><select class="form-select" id="plannerPriority" name="priority" ' + (!canEdit ? 'disabled' : '') + '>' +
