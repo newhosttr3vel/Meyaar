@@ -325,7 +325,7 @@ document.addEventListener('submit', async event => {
   const title = String(data.title || '').trim();
   if (!title) return plannerFormError('اكتب اسم المهمة أولًا.');
   if (!isValidISODate(data.date)) return plannerFormError('اختار تاريخًا صحيحًا.');
-  const time24 = /^([01]\\d|2[0-3]):[0-5]\\d$/;
+  const time24 = /^([01]\d|2[0-3]):[0-5]\d$/;
   if (!time24.test(data.startTime || '') || !time24.test(data.endTime || '')) {
     return plannerFormError('اكتب الوقت بنظام 24 ساعة بصيغة HH:MM، مثل 09:00 أو 22:30.');
   }
