@@ -525,8 +525,8 @@ function normalizePlannerTask(input) {
   if (!isValidPlannerDate(date)) throw new Error('Task date must be a valid YYYY-MM-DD date.');
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) ||
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime) ||
-      endTime <= startTime) {
-    throw new Error('Task end time must be later than its start time.');
+      endTime === startTime) {
+    throw new Error('Task end time must be different from its start time. Overnight tasks are allowed.');
   }
 
   return {
