@@ -3375,7 +3375,10 @@ function plannerTaskMinutes(task) {
     const parts = String(value || '').split(':').map(Number);
     return parts.length === 2 ? parts[0] * 60 + parts[1] : 0;
   };
-  return Math.max(0, toMinutes(task.endTime) - toMinutes(task.startTime));
+  const start = toMinutes(task.startTime);
+  const end = toMinutes(task.endTime);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start === end) return 0;
+  return end > start ? end - start : (24 * 60 - start) + end;
 }
 
 function plannerDurationLabel(minutes) {
@@ -3459,7 +3462,7 @@ function vPlanner() {
     '<article><span>وقت مخطط</span><strong>' + esc(plannerDurationLabel(plannedMinutes)) + '</strong><small>حسب مواعيد البداية والنهاية</small></article>' +
     '<article><span>أيام عليها أنشطة</span><strong>' + activeDays + ' / 7</strong><small>توزيع أنشطتك خلال الأسبوع</small></article></div>' +
     '<section class="planner-form-panel"><div class="planner-section-title"><div><h3><i class="bi bi-plus-circle"></i> ' +
-    (editing ? 'تعديل المهمة' : 'إضافة مهمة جديدة') + '</h3><p>حدد المهمة والوقت واليوم والأولوية. المهام لا تنشئ معاملات مالية.</p></div>' +
+    (editing ? 'تعديل المهمة' : 'إضافة مهمة جديدة') + '</h3><p>حدد المهمة والوقت واليوم والأولوية. يمكن أن تمتد المهمة لليوم التالي، مثل 22:00 إلى 05:00. المهام لا تنشئ معاملات مالية.</p></div>' +
     (editing ? '<button type="button" class="btn btn-sm btn-outline-secondary" id="btnPlannerCancelEdit">إلغاء التعديل</button>' : '') + '</div>' +
     '<form id="plannerTaskForm"><input type="hidden" name="id" value="' + esc(editing ? editing.id : '') + '">' +
     '<div class="row g-3"><div class="col-12 col-md-6 col-xl-4"><label class="form-label" for="plannerTitle">اسم المهمة</label>' +
@@ -3678,8 +3681,8 @@ document.addEventListener('submit', async event => {
   if (!time24.test(data.startTime || '') || !time24.test(data.endTime || '')) {
     return plannerFormError('اكتب الوقت بنظام 24 ساعة بصيغة HH:MM، مثل 09:00 أو 22:30.');
   }
-  if (data.endTime <= data.startTime) {
-    return plannerFormError('وقت النهاية لازم يكون بعد وقت البداية.');
+  if (data.endTime === data.startTime) {
+    return plannerFormError('وقت النهاية لازم يختلف عن وقت البداية. لو المهمة لليوم التالي، اكتب وقت النهاية الأصغر مثل 05:00 بعد بداية 22:00.');
   }
   const existing = (S.plannerTasks || []).find(task => task.id === String(data.id || ''));
   const now = new Date().toISOString();
