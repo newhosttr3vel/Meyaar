@@ -3168,6 +3168,42 @@ function setSidebarOpen(open) {
   }
 }
 
+
+// Handle main navigation directly on its own container. Capture phase prevents
+// unrelated bubbling listeners from swallowing a section change.
+const mainNav = $('#navTabs');
+if (mainNav) {
+  mainNav.addEventListener('click', event => {
+    const tab = event.target.closest('[data-tab]');
+    if (!tab || !mainNav.contains(tab)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const nextTab = String(tab.dataset.tab || '');
+    if (!['dash', 'tx', 'income', 'plan', 'rec', 'goal', 'acc', 'ast', 'set', 'aud'].includes(nextTab)) return;
+
+    setSidebarOpen(false);
+    S.ui.tab = nextTab;
+    save();
+
+    try {
+      render();
+    } catch (error) {
+      console.error('تعذر رسم القسم المحدد:', error);
+      const appRoot = $('#app');
+      if (appRoot) {
+        appRoot.innerHTML = '<section class="box"><h3>تعذر فتح القسم</h3><p>حدث خطأ أثناء عرض الصفحة: ' +
+          esc(error && error.message ? error.message : String(error)) + '</p></section>';
+      }
+      showAppToast('تعذر فتح القسم بسبب خطأ في العرض. راجع وحدة التحكم لمعرفة التفاصيل.', 6500);
+      return;
+    }
+
+    if (nextTab === 'plan') loadPlannerTasksFromGoogle({ renderAfter: true });
+  }, true);
+}
+
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && $('#appSidebar')?.classList.contains('is-open')) {
     setSidebarOpen(false);
