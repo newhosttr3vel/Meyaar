@@ -818,7 +818,7 @@ document.addEventListener('click', e => {
     S.ui.tab = tab.dataset.tab;
     save();
     render();
-    if (S.ui.tab === 'plan') loadPlannerTasksFromGoogle({ renderAfter: false });
+    if (S.ui.tab === 'plan') loadPlannerTasksFromGoogle({ renderAfter: true });
     return;
   }
   if (e.target.closest('#btnAddTx')) { openTx(); return; }
