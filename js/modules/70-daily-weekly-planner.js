@@ -393,15 +393,17 @@ function plannerTaskForm(editing, canEdit, defaultDate) {
 
 function plannerSettingsCard(canEdit) {
   const rules = plannerRules();
+  const selectedPrayerTimes = typeof plannerPrayerTimesFor === 'function' ? plannerPrayerTimesFor(S.ui.plannerDate || plannerEgyptISODate()) : null;
+  const selectedMaghrib = selectedPrayerTimes && selectedPrayerTimes.Maghrib ? plannerMinutesTime(Math.min(1439, plannerTimeMinutes(selectedPrayerTimes.Maghrib) + 60)) : rules.workEnd;
   const dayNames = [{v:6,t:'سبت'},{v:0,t:'أحد'},{v:1,t:'اثنين'},{v:2,t:'ثلاثاء'},{v:3,t:'أربعاء'},{v:4,t:'خميس'},{v:5,t:'جمعة'}];
   return '<details class="pc-settings"><summary><i class="bi bi-sliders"></i> ضبط ساعات اليوم وقواعد التخطيط</summary>' +
     '<form id="plannerSettingsForm"><div class="pc-settings-grid">' +
-    '<label>بداية اليوم<input type="time" name="dayStart" class="form-control" value="' + esc(rules.dayStart) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>نهاية اليوم<input type="time" name="dayEnd" class="form-control" value="' + esc(rules.dayEnd) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
+    '<label>بداية اليوم<input type="time" name="dayStart" class="form-control" value="' + esc(rules.dayStart) + '" readonly></label>' +
+    '<label>نهاية اليوم<input type="time" name="dayEnd" class="form-control" value="' + esc(rules.dayEnd) + '" readonly></label>' +
     '<label>بداية النوم<input type="time" name="sleepStart" class="form-control" value="' + esc(rules.sleepStart) + '" readonly></label>' +
     '<label>نهاية النوم<input type="time" name="sleepEnd" class="form-control" value="' + esc(rules.sleepEnd) + '" readonly></label>' +
     '<label>بداية العمل<input type="time" name="workStart" class="form-control" value="10:00" readonly></label>' +
-    '<label>نهاية العمل<input type="time" name="workEnd" class="form-control" value="' + esc(rules.workEnd) + '" readonly><small>تتغير تلقائيًا مع موعد المغرب</small></label>' +
+    '<label>نهاية العمل<input type="time" name="workEnd" class="form-control" value="' + esc(selectedMaghrib) + '" readonly><small>تتغير تلقائيًا إلى ساعة بعد المغرب</small></label>' +
     '<label>فاصل بين المهام (دقيقة)<input type="number" min="5" max="30" step="5" name="breakMinutes" class="form-control" value="' + rules.breakMinutes + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
     '<label>نسبة استغلال الوقت المستهدف<input type="number" min="60" max="95" step="5" name="targetLoad" class="form-control" value="' + rules.targetLoad + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label></div>' +
     '<div class="pc-settings-days"><strong>أيام العمل</strong><span>كل أيام الأسبوع، بما فيها الجمعة</span><div hidden>' + dayNames.map(day =>
