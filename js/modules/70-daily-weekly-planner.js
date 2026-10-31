@@ -140,14 +140,18 @@ function plannerDayOfWeek(date) {
 
 function plannerAvailableWindows(date, area) {
   const rules = plannerRules();
-  const dayStart = plannerTimeMinutes(rules.dayStart);
-  const dayEnd = plannerTimeMinutes(rules.dayEnd);
-  if (!Number.isFinite(dayStart) || !Number.isFinite(dayEnd) || dayEnd <= dayStart) return [];
+  const configuredStart = plannerTimeMinutes(rules.dayStart);
+  const configuredEnd = plannerTimeMinutes(rules.dayEnd);
+  const sleepStart = plannerTimeMinutes(rules.sleepStart);
+  const sleepEnd = plannerTimeMinutes(rules.sleepEnd);
+  if (!Number.isFinite(configuredStart) || !Number.isFinite(configuredEnd) ||
+      !Number.isFinite(sleepStart) || !Number.isFinite(sleepEnd)) return [];
+  const dayStart = Math.max(configuredStart, sleepEnd);
+  const dayEnd = Math.min(configuredEnd, sleepStart);
+  if (dayEnd <= dayStart) return [];
   const workDay = rules.workDays.includes(plannerDayOfWeek(date));
   const workStart = plannerTimeMinutes(rules.workStart);
   const workEnd = plannerTimeMinutes(rules.workEnd);
-  const sleepStart = plannerTimeMinutes(rules.sleepStart);
-  const sleepEnd = plannerTimeMinutes(rules.sleepEnd);
 
   if (area === 'work') {
     if (!workDay || !Number.isFinite(workStart) || !Number.isFinite(workEnd) || workEnd <= workStart) return [];
@@ -719,6 +723,7 @@ function plannerGenerateDay(date,tasks) {
     }
     const updated={
       ...task,
+      updatedAtBefore:String(task.updatedAt || ''),
       date,
       startTime:plannerMinutesTime(slot.start),
       endTime:plannerMinutesTime(slot.end),
@@ -743,7 +748,13 @@ async function plannerApplyScheduleDraft() {
   const failures=[];
   try {
     for(const task of plan) {
-      const result=await postGooglePayload({action:'savetask',task,expectedUpdatedAt:String(task.updatedAtBefore||'')});
+      const payloadTask={...task};
+      delete payloadTask.updatedAtBefore;
+      const result=await postGooglePayload({
+        action:'savetask',
+        task:payloadTask,
+        expectedUpdatedAt:String(task.updatedAtBefore||'')
+      });
       if(!result||result.success===false||!result.task) {
         failures.push((result&&(result.error||result.message))||('تعذر حفظ '+task.title));
         break;
@@ -874,6 +885,7 @@ document.addEventListener('change',async event=>{
   if(event.target.id==='plannerSearch')plannerCurrentSearch=event.target.value;
   if(event.target.id==='plannerAreaFilter')plannerCurrentAreaFilter=event.target.value;
   if(event.target.id==='plannerProjectFilter')plannerCurrentProjectFilter=event.target.value;
+  if(['plannerSearch','plannerAreaFilter','plannerProjectFilter'].includes(event.target.id))render();
 });
 
 document.addEventListener('click',async event=>{
