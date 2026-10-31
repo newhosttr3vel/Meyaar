@@ -18,7 +18,7 @@ function seed() {
       dayStart: '05:00', dayEnd: '22:00',
       sleepStart: '22:00', sleepEnd: '05:00',
       workStart: '10:00', workEnd: '19:00',
-      workDays: [0, 1, 2, 3, 4, 6],
+      workDays: [0, 1, 2, 3, 4, 5, 6],
       breakMinutes: 10, targetLoad: 85
     },
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
@@ -210,7 +210,7 @@ function normalizeState(input) {
     sleepEnd: minuteOf(sleepStart) > minuteOf(sleepEnd) ? sleepEnd : base.plannerSettings.sleepEnd,
     workStart: minuteOf(workStart) < minuteOf(workEnd) ? workStart : base.plannerSettings.workStart,
     workEnd: minuteOf(workStart) < minuteOf(workEnd) ? workEnd : base.plannerSettings.workEnd,
-    workDays,
+    workDays: [0, 1, 2, 3, 4, 5, 6],
     breakMinutes: Math.max(5, Math.min(30, Math.trunc(Number(settings.breakMinutes) || 10))),
     targetLoad: Math.max(60, Math.min(95, Math.trunc(Number(settings.targetLoad) || 85)))
   };
