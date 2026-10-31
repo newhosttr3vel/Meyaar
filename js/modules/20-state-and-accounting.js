@@ -252,7 +252,7 @@ function normalizeState(input) {
       endTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(item.endTime || '')) ? String(item.endTime) : '10:00',
       category: ['القرآن', 'القراءة', 'التعلم', 'الجيم', 'الصلاة', 'الأكل', 'الراحة', 'عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'].includes(item.category) ? item.category : 'شخصي',
       priority: ['عالية', 'متوسطة', 'منخفضة'].includes(item.priority) ? item.priority : 'متوسطة',
-      status: ['todo', 'done'].includes(item.status) ? item.status : 'todo',
+      status: ['todo', 'partial', 'done', 'postponed', 'missed'].includes(item.status) ? item.status : 'todo',
       note: String(item.note || '').trim().slice(0, 500),
       createdAt: String(item.createdAt || ''),
       updatedAt: String(item.updatedAt || '')
