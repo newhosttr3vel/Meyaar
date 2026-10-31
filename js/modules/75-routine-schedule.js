@@ -73,7 +73,8 @@ function plannerAvailableWindows(date, area) {
   const prayerTimes = plannerPrayerTimesFor(date);
   if (area === 'work') {
     if (!prayerTimes || !prayerTimes.Maghrib) return [];
-    settings.workEnd = prayerTimes.Maghrib;
+    const maghribMinutes = plannerTimeMinutes(prayerTimes.Maghrib);
+    settings.workEnd = plannerMinutesTime(Math.min(1439, maghribMinutes + 60));
   }
   try {
     return plannerAvailableWindowsBase(date, area);
@@ -92,7 +93,8 @@ function plannerPrayerAndRoutinePanel(date) {
     : '<div class="pc-routine-loading">' +
         (error ? 'تعذر تحديث مواقيت الصلاة. <button type="button" class="btn btn-sm btn-outline-primary" id="btnPlannerPrayerRetry">إعادة المحاولة</button>'
           : 'جارٍ تحديث مواقيت الصلاة حسب التاريخ المحدد…') + '</div>';
-  const workEnd = times && times.Maghrib ? times.Maghrib : 'يتحدد مع المغرب';
+  const maghribMinutes = times && times.Maghrib ? plannerTimeMinutes(times.Maghrib) : NaN;
+  const workEnd = Number.isFinite(maghribMinutes) ? plannerMinutesTime(Math.min(1439, maghribMinutes + 60)) : 'يتحدد مع المغرب';
   return '<section class="pc-routine-panel">' +
     '<header><div><span class="pc-section-kicker">مواعيدك الثابتة</span><h4>روتين اليوم</h4></div>' +
     '<small>كفر الشيخ · توقيت مصر</small></header>' +
