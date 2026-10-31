@@ -6,6 +6,8 @@ let plannerScheduleDraft = null;
 let plannerCurrentSearch = '';
 let plannerCurrentProjectFilter = 'all';
 let plannerCurrentAreaFilter = 'all';
+// Preserve a requested planner repaint when navigation happens during the initial task load.
+let plannerRenderAfterLoadRequested = false;
 
 const PLANNER_STATUSES = ['inbox', 'next', 'scheduled', 'doing', 'done', 'postponed', 'archived'];
 const PLANNER_STATUS_LABELS = {
@@ -603,7 +605,10 @@ function vPlanner() {
 }
 
 async function loadPlannerTasksFromGoogle({renderAfter=true,manual=false}={}) {
-  if(plannerLoadInFlight)return false;
+  if(plannerLoadInFlight) {
+    if(renderAfter&&S.ui.tab==='plan')plannerRenderAfterLoadRequested=true;
+    return false;
+  }
   plannerLoadInFlight=true;
   try {
     const response=await fetch(API_URL+'?action=tasks&_='+Date.now(),{method:'GET',cache:'no-store'});
@@ -642,7 +647,9 @@ async function loadPlannerTasksFromGoogle({renderAfter=true,manual=false}={}) {
     return false;
   } finally {
     plannerLoadInFlight=false;
-    if(renderAfter&&S.ui.tab==='plan')render();
+    const shouldRenderAfterLoad=renderAfter||plannerRenderAfterLoadRequested;
+    plannerRenderAfterLoadRequested=false;
+    if(shouldRenderAfterLoad&&S.ui.tab==='plan')render();
   }
 }
 
