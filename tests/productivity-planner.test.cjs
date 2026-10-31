@@ -32,7 +32,7 @@ const sandbox = {
   },
   document: { addEventListener() {} },
   isValidISODate,
-  localISODate: () => '2026-10-31',
+  localISODate: date => isoDate(date || new Date()),
   plannerCloudInitialized: true,
   cloudPlannerSupported: true,
   plannerSaveInFlight: false,
