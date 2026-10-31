@@ -4360,7 +4360,6 @@ document.addEventListener('click',async event=>{
     return;
   }
 });
-
 if (S.ui.theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
 else document.documentElement.setAttribute('data-theme', 'light');
 
