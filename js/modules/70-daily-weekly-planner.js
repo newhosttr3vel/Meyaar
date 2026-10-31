@@ -351,7 +351,7 @@ function plannerViewTabs(current) {
 function plannerTaskForm(editing, canEdit, defaultDate) {
   const task = editing || {};
   const categories = PLANNER_CATEGORIES.map(value =>
-    '<option value="' + esc(value) + '" ' + ((task.category || 'شخصي') === value ? 'selected' : '') + '>' + esc(value) + '</option>'
+    '<option value="' + esc(value) + '" ' + ((task.category || 'أخرى') === value ? 'selected' : '') + '>' + esc(value) + '</option>'
   ).join('');
   const priorities = PLANNER_PRIORITIES.map(value =>
     '<option value="' + value + '" ' + ((task.priority || 'متوسطة') === value ? 'selected' : '') + '>' + value + '</option>'
@@ -417,7 +417,11 @@ function plannerDailyView(date, tasks, canEdit) {
     .sort((a, b) => plannerTaskSort(a, b, date)).slice(0, 3);
   const scheduled = tasks.filter(task => task.date === date && plannerTaskHasSlot(task) && task.status !== 'archived')
     .sort((a, b) => plannerTimeMinutes(a.startTime) - plannerTimeMinutes(b.startTime));
+  const runningTasks=tasks.filter(task=>task.status==='doing'&&task.startedAt);
   return '<div class="pc-daily-layout"><div class="pc-daily-main">' +
+    (runningTasks.length ? '<section class="pc-running-panel"><strong><i class="bi bi-record-circle"></i> جلسة تركيز نشطة</strong>' +
+      runningTasks.map(task=>'<div><span>'+esc(task.title)+'</span><small>بدأت '+esc(new Date(task.startedAt).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}))+'</small></div>').join('') +
+      '</section>' : '') +
     '<section class="pc-focus-panel"><header><div><span class="pc-section-kicker">أهم نتائج اليوم</span><h3>الثلاثة الأهم اليوم</h3>' +
     '<p>رتّبناها حسب الأولوية والأثر والموعد النهائي، وتقدر تغيّر ترتيبها بتعديل بيانات المهمة.</p></div><span class="pc-focus-icon"><i class="bi bi-bullseye"></i></span></header>' +
     (focus.length ? focus.map((task,index) =>
@@ -590,7 +594,7 @@ function vPlanner() {
     '<div class="pc-hero-score"><span>إنجاز اليوم</span><strong>' + summary.completionRate + '%</strong><small>' + summary.done.length + ' مكتملة من ' + (summary.done.length+summary.dueTasks.length) + ' مهمة</small></div></header>' +
     syncNotice +
     '<nav class="pc-view-tabs">' + plannerViewTabs(view) + '</nav>' +
-    (view==='today'?plannerDailyView(date,tasks,canEdit):viewBody) +
+    viewBody +
     plannerDraftPanel() +
     '<section class="pc-capture-area">' + plannerTaskForm(editing,canEdit,date) + '</section>' +
     plannerSettingsCard(cloudSettingsInitialized&&!cloudSettingsSyncInFlight) +
@@ -936,7 +940,13 @@ document.addEventListener('click',async event=>{
     if(!task||!task.startedAt)return;
     const elapsed=Math.max(1,Math.ceil((Date.now()-new Date(task.startedAt).getTime())/60000));
     const now=new Date().toISOString();
-    const updated={...task,status:'scheduled',startedAt:'',actualMinutes:(Number(task.actualMinutes)||0)+elapsed,updatedAt:now};
+    const updated={
+      ...task,
+      status:plannerTaskHasSlot(task)?'scheduled':'next',
+      startedAt:'',
+      actualMinutes:(Number(task.actualMinutes)||0)+elapsed,
+      updatedAt:now
+    };
     await persistPlannerTask(updated,task.updatedAt,'تم تسجيل '+plannerDurationLabel(elapsed)+' كوقت تركيز فعلي.');
     return;
   }
