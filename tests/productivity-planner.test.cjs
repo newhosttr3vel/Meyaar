@@ -95,7 +95,7 @@ const eveningPersonalTask = {
 assert.deepEqual(Array.from(api.plannerTaskConflicts(eveningPersonalTask)), [],
   'A personal task after Maghrib plus one hour is accepted');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'work')))),
-  [[600, 1140]], 'Saturday work availability is 10:00 until one hour after Maghrib');
+  [[600, 1113]], 'Saturday work availability is 10:00 until one hour after the updated Maghrib time');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-11-06', 'personal')))),
   [[300, 600], [1140, 1320]], 'Friday retains personal windows around daily work');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-11-06', 'work')))), [[600, 1140]],
