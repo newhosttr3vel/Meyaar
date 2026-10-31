@@ -169,7 +169,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(api.plannerTaskSegments(overnight).ma
 S.plannerSettings.sleepEnd = '06:00';
 S.plannerSettings.sleepStart = '21:00';
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'personal')))),
-  [[360, 600], [1140, 1260]], 'Custom sleep boundaries update personal availability');
+  [[360, 600], [1113, 1260]], 'Custom sleep boundaries update personal availability using the updated Maghrib boundary');
 
 (async function testQueuedRenderAfterInitialPlannerLoad() {
   let releaseFetch;
