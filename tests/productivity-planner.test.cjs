@@ -59,6 +59,7 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(source + '\n' + routineSource + '\nplannerPrayerCache.set("2026-10-31", {Fajr:"05:00",Dhuhr:"12:00",Asr:"15:30",Maghrib:"18:00",Isha:"19:30"}); plannerPrayerCache.set("2026-11-06", {Fajr:"05:00",Dhuhr:"12:00",Asr:"15:30",Maghrib:"18:00",Isha:"19:30"});\nglobalThis.__plannerTest = {' +
   'plannerAvailableWindows: plannerAvailableWindows,' +
+  'setPrayerTimes: (date, times) => plannerPrayerCache.set(date, times),' +
   'plannerPrayerAndRoutinePanel: plannerPrayerAndRoutinePanel,' +
   'plannerCleanPrayerTime: plannerCleanPrayerTime,' +
   'plannerGenerateDay: plannerGenerateDay,' +
@@ -78,8 +79,23 @@ const ranges = windows => windows.map(window => [window.start, window.end]);
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'personal')))),
   [[300, 600], [1140, 1320]],
   'Saturday personal availability is 05:00–10:00 and 19:00–22:00');
+const configuredWorkEnd = S.plannerSettings.workEnd;
+S.plannerSettings.workEnd = '17:00';
+assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'personal')))),
+  [[300, 600], [1140, 1320]],
+  'Personal availability also starts one hour after the selected day Maghrib, not the stale configured work end');
+assert.equal(S.plannerSettings.workEnd, '17:00',
+  'Dynamic work-end calculation restores the shared setting after checking personal availability');
+S.plannerSettings.workEnd = configuredWorkEnd;
+api.setPrayerTimes('2026-10-31', {Fajr:'05:00',Dhuhr:'12:00',Asr:'15:30',Maghrib:'17:33',Isha:'19:30'});
+const eveningPersonalTask = {
+  id: 'EVENING-PERSONAL', title: 'اطلس', date: '2026-10-31',
+  startTime: '18:33', endTime: '21:11', area: 'personal'
+};
+assert.deepEqual(Array.from(api.plannerTaskConflicts(eveningPersonalTask)), [],
+  'A personal task after Maghrib plus one hour is accepted');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'work')))),
-  [[600, 1140]], 'Saturday work availability is 10:00 until one hour after Maghrib');
+  [[600, 1113]], 'Saturday work availability is 10:00 until one hour after the updated Maghrib time');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-11-06', 'personal')))),
   [[300, 600], [1140, 1320]], 'Friday retains personal windows around daily work');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-11-06', 'work')))), [[600, 1140]],
@@ -153,7 +169,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(api.plannerTaskSegments(overnight).ma
 S.plannerSettings.sleepEnd = '06:00';
 S.plannerSettings.sleepStart = '21:00';
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'personal')))),
-  [[360, 600], [1140, 1260]], 'Custom sleep boundaries update personal availability');
+  [[360, 600], [1113, 1260]], 'Custom sleep boundaries update personal availability using the updated Maghrib boundary');
 
 (async function testQueuedRenderAfterInitialPlannerLoad() {
   let releaseFetch;

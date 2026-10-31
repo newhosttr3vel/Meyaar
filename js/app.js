@@ -4435,11 +4435,12 @@ function plannerAvailableWindows(date, area) {
   const settings = S.plannerSettings || (S.plannerSettings = {});
   const originalWorkEnd = settings.workEnd;
   const prayerTimes = plannerPrayerTimesFor(date);
-  if (area === 'work') {
-    if (!prayerTimes || !prayerTimes.Maghrib) return [];
-    const maghribMinutes = plannerTimeMinutes(prayerTimes.Maghrib);
-    settings.workEnd = plannerMinutesTime(Math.min(1439, maghribMinutes + 60));
-  }
+  // Both work and personal availability must use the same dynamic work boundary.
+  // Personal time starts only after the work block ends (Maghrib + 60 minutes).
+  if (!prayerTimes || !prayerTimes.Maghrib) return [];
+  const maghribMinutes = plannerTimeMinutes(prayerTimes.Maghrib);
+  if (!Number.isFinite(maghribMinutes)) return [];
+  settings.workEnd = plannerMinutesTime(Math.min(1439, maghribMinutes + 60));
   try {
     return plannerAvailableWindowsBase(date, area);
   } finally {
