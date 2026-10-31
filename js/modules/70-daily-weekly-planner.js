@@ -281,7 +281,8 @@ function plannerTaskCard(task, canEdit, compact = false) {
 
 function plannerTodaySummary(date, tasks) {
   const dayTasks = tasks.filter(task => task.date === date && plannerTaskHasSlot(task));
-  const dueTasks = tasks.filter(task => plannerTaskDueToday(task, date) && plannerTaskIsOpen(task));
+  const dueTasks = tasks.filter(task => plannerTaskIsOpen(task) &&
+    ((isValidISODate(task.dueDate) && task.dueDate <= date) || task.date === date));
   const done = tasks.filter(task => task.status === 'done' && (task.date === date || task.dueDate === date));
   const overdue = tasks.filter(task => plannerTaskOverdue(task, date));
   const plannedMinutes = dayTasks.reduce((sum, task) => sum + plannerTaskMinutes(task), 0);
