@@ -899,6 +899,10 @@ function plannerValidateRules(data) {
   if (plannerTimeMinutes(data.workStart) >= plannerTimeMinutes(data.workEnd)) {
     return 'بداية العمل يجب أن تسبق نهايته في نفس اليوم.';
   }
+  if (plannerTimeMinutes(data.workStart) < plannerTimeMinutes(data.sleepEnd) ||
+      plannerTimeMinutes(data.workEnd) > plannerTimeMinutes(data.sleepStart)) {
+    return 'مواعيد العمل يجب أن تقع بالكامل بين الاستيقاظ وبداية النوم حتى لا تتعارض القواعد الثابتة.';
+  }
   if (!data.workDays.length) return 'حدد يوم عمل واحدًا على الأقل، أو اترك الجدول الحالي كما هو.';
   return '';
 }
