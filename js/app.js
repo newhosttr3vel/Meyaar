@@ -563,7 +563,6 @@ function normalizeGoogleDate(value) {
   return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
 }
 
-
 function sameRemoteCore(tx, remote) {
   return normalizeGoogleDate(tx.date) === normalizeGoogleDate(remote.date) &&
     String(tx.type || '').trim() === String(remote.type || '').trim() &&
@@ -1089,7 +1088,6 @@ async function deleteTransactionFromGoogle(tx) {
   }
   return result;
 }
-
 
 const T = (id, date, name, cat, sub, type, amt, acc, pay, code, qty, price, note, cur = 'EGP') =>
   ({ id, date, name, cat, sub: sub || '', type, amt, fee: 0, pay, acc, code: code || '', qty: qty || '', price: price || '', note: note || '', cur });
@@ -1640,7 +1638,6 @@ function calc() {
   };
 }
 
-
 const charts = {};
 function destroyCharts() {
   Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].destroy(); delete charts[k]; } });
@@ -1704,7 +1701,6 @@ function renderBalanceLine(c) {
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, labels: { color: col.text, font: { family: 'Cairo' } } }, tooltip: { callbacks: { label: ctx => ` الرصيد: ${f(ctx.raw)} ج.م` } } }, scales: { x: { ticks: { color: col.text, font: { size: 10 } }, grid: { color: col.grid } }, y: { ticks: { color: col.text }, grid: { color: col.grid } } } }
   });
 }
-
 
 let appToastTimer = null;
 let appToastNode = null;
@@ -1770,7 +1766,6 @@ function bd(s) {
 }
 function st(s) { return s === 'سليم' ? bd(s) : `<span class="tag tag-er">${s}</span>`; }
 function fillSelect(el, arr, val) { el.innerHTML = arr.map(x => `<option value="${esc(x)}" ${x === val ? 'selected' : ''}>${esc(x)}</option>`).join(''); }
-
 
 function vDash(c) {
   const ys = [];
@@ -2369,7 +2364,6 @@ function render() {
   const icon = $('#btnTheme i');
   if (icon) icon.className = document.documentElement.getAttribute('data-theme') === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
 }
-
 let editingTx = null;
 let txSaveInFlight = false;
 let incomeSourceSaveInFlight = false;
@@ -3405,7 +3399,6 @@ setInterval(() => {
     $('#plannerTaskForm').contains(document.activeElement);
   if (!plannerFormHasFocus) loadPlannerTasksFromGoogle({ renderAfter: true });
 }, 15000);
-
 /* Smart personal planner: fixed commitments, recurring activities, conflict detection and week scheduling.
    Daily tasks remain isolated in the dedicated TASKS sheet; settings live in SYS_APP_SETTINGS. */
 
