@@ -92,6 +92,26 @@ assert.match(plannerModule, /action: 'deletetask'/,
   'The planner deletes single tasks through the dedicated endpoint');
 assert.match(appsScript, /supportedKeys: CONFIG\.SHARED_STATE_KEYS\.slice\(\)/,
   'The shared-settings API continues to advertise its supported collections for compatibility');
+
+assert.match(domainModule, /plannerSettings:\s*source\.plannerSettings/,
+  'Planner working hours and load preferences synchronize across devices');
+assert.match(appsScript, /'Area', 'Project', 'DueDate', 'EstimateMinutes', 'ActualMinutes'/,
+  'TASKS retains extended metadata columns after the original 12');
+assert.match(appsScript, /function getTasksSheet\(\)[\s\S]*?legacy headers[\s\S]*?No existing task rows were changed/,
+  'Legacy TASKS headers upgrade in place without rewriting original rows');
+assert.match(appsScript, /'plannerTasks', 'plannerSettings'/,
+  'Legacy planner tasks remain readable for safe migration');
+assert.match(plannerModule, /function plannerGenerateDay\(/,
+  'The productivity planner has an automatic day-scheduling engine');
+assert.match(plannerModule, /function plannerPriorityScore\(/,
+  'Task priority uses urgency, impact, priority and effort');
+assert.match(plannerModule, /function plannerAvailableWindows\(/,
+  'Personal and work availability are calculated separately');
+assert.match(plannerModule, /data-planner-focus-start/,
+  'Tasks support focus sessions and actual-time tracking');
+assert.match(plannerModule, /pc-review-kpis/,
+  'The planner includes execution and time-use analytics');
+
 assert.match(domainModule, /incomeSources:\s*source\.incomeSources/,
   'Income sources are part of the shared settings payload');
 assert.match(domainModule, /function mergeSharedSettingsSnapshots\(/,
