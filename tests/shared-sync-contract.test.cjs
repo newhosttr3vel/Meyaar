@@ -86,9 +86,9 @@ assert.match(appsScript, /function deletePlannerTask\(sheet, data\)/,
   'The server deletes tasks through tombstones rather than transaction rows');
 assert.match(plannerModule, /async function loadPlannerTasksFromGoogle/,
   'The planner reads its dedicated worksheet endpoint');
-assert.match(plannerModule, /action: 'savetask'/,
+assert.match(plannerModule, /action:\s*'savetask'/,
   'The planner saves single tasks to the dedicated endpoint');
-assert.match(plannerModule, /action: 'deletetask'/,
+assert.match(plannerModule, /action:\s*'deletetask'/,
   'The planner deletes single tasks through the dedicated endpoint');
 assert.match(appsScript, /supportedKeys: CONFIG\.SHARED_STATE_KEYS\.slice\(\)/,
   'The shared-settings API continues to advertise its supported collections for compatibility');
