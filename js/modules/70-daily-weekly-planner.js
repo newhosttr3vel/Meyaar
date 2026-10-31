@@ -240,7 +240,7 @@ function plannerTaskOverdue(task, date) {
 function plannerTaskStatusSelect(task, canEdit) {
   return '<select class="form-select form-select-sm planner-status-select" data-planner-status="' + esc(task.id) +
     '" aria-label="حالة المهمة" ' + (!canEdit ? 'disabled' : '') + '>' +
-    Object.keys(PLANNER_STATUS_LABELS).filter(status => status !== 'archived' || task.status === 'archived')
+    Object.keys(PLANNER_STATUS_LABELS)
       .map(status => '<option value="' + status + '" ' + (task.status === status ? 'selected' : '') + '>' +
         PLANNER_STATUS_LABELS[status] + '</option>').join('') +
     '</select>';
@@ -271,7 +271,7 @@ function plannerTaskCard(task, canEdit, compact = false) {
       ' · الوقت الجاري لا يُضاف إلا عند إنهاء الجلسة</div>' : '') +
     '</div><div class="pc-task-controls">' +
     plannerTaskStatusSelect(task, canEdit) +
-    (canEdit ? (isRunning
+    (canEdit && !['done','archived'].includes(task.status) ? (isRunning
       ? '<button type="button" class="btn btn-sm btn-warning" data-planner-focus-stop="' + esc(task.id) + '"><i class="bi bi-pause-fill"></i> إيقاف التركيز</button>'
       : '<button type="button" class="btn btn-sm btn-outline-success" data-planner-focus-start="' + esc(task.id) + '"><i class="bi bi-play-fill"></i> ابدأ التركيز</button>') : '') +
     '<button type="button" class="btn btn-sm btn-outline-primary" data-planner-edit="' + esc(task.id) + '" ' + (!canEdit ? 'disabled' : '') + '><i class="bi bi-pencil"></i></button>' +
@@ -378,7 +378,7 @@ function plannerTaskForm(editing, canEdit, defaultDate) {
     '<label class="pc-field"><span>من الساعة</span><input class="form-control" name="startTime" type="time" value="' + esc(task.startTime || '') + '" ' + (!canEdit ? 'disabled' : '') + '></label>' +
     '<label class="pc-field"><span>إلى الساعة</span><input class="form-control" name="endTime" type="time" value="' + esc(task.endTime || '') + '" ' + (!canEdit ? 'disabled' : '') + '></label>' +
     '<label class="pc-field"><span>الحالة</span><select class="form-select" name="status" ' + (!canEdit ? 'disabled' : '') + '>' +
-    Object.keys(PLANNER_STATUS_LABELS).filter(status => status !== 'archived').map(status =>
+    Object.keys(PLANNER_STATUS_LABELS).map(status =>
       '<option value="' + status + '" ' + ((task.status || 'inbox') === status ? 'selected' : '') + '>' + PLANNER_STATUS_LABELS[status] + '</option>'
     ).join('') + '</select></label></div>' +
     '<label class="pc-field pc-field-full"><span>ملاحظات أو خطوات التنفيذ</span><textarea name="note" class="form-control" rows="2" maxlength="500" placeholder="اكتب الخطوة التالية أو أي تفاصيل مهمة" ' + (!canEdit ? 'disabled' : '') + '>' + esc(task.note || '') + '</textarea></label>' +
@@ -458,9 +458,9 @@ function plannerInboxView(tasks, canEdit) {
 }
 
 function plannerBacklogView(tasks, canEdit) {
-  const backlog = plannerFilteredTasks(tasks.filter(task=>task.status!=='archived'))
+  const backlog = plannerFilteredTasks(tasks)
     .sort((a,b)=>plannerTaskSort(a,b,localISODate()));
-  const groups = ['doing','scheduled','next','inbox','postponed','done'];
+  const groups = ['doing','scheduled','next','inbox','postponed','done','archived'];
   return '<section class="pc-content-panel"><header><div><span class="pc-section-kicker">قاعدة المهام الكاملة</span><h3>كل المهام</h3>' +
     '<p>ابحث وصنّف مهامك، وغيّر حالتها أو موعدها أو المشروع المرتبط بها.</p></div><span class="pc-small-count">' + backlog.length + ' مهمة</span></header>' +
     '<div class="pc-filter-row"><input class="form-control" id="plannerSearch" placeholder="ابحث باسم المهمة أو المشروع..." value="' + esc(plannerCurrentSearch) + '">' +
@@ -839,7 +839,7 @@ document.addEventListener('submit',async event=>{
       endTime:data.endTime||'',
       category:PLANNER_CATEGORIES.includes(data.category)?data.category:'أخرى',
       priority:PLANNER_PRIORITIES.includes(data.priority)?data.priority:'متوسطة',
-      status:PLANNER_STATUSES.includes(data.status)?data.status:'inbox',
+      status:(data.date&&data.startTime&&data.endTime&&['inbox','next'].includes(data.status))?'scheduled':(PLANNER_STATUSES.includes(data.status)?data.status:'inbox'),
       area:PLANNER_AREAS.includes(data.area)?data.area:'personal',
       project:String(data.project||'').trim().slice(0,80),
       dueDate:data.dueDate||'',
