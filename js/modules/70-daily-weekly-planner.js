@@ -30,7 +30,7 @@ function plannerRules() {
     sleepEnd: raw.sleepEnd || '05:00',
     workStart: raw.workStart || '10:00',
     workEnd: raw.workEnd || '19:00',
-    workDays: Array.isArray(raw.workDays) ? raw.workDays : [0, 1, 2, 3, 4, 6],
+    workDays: Array.isArray(raw.workDays) ? raw.workDays : [0, 1, 2, 3, 4, 5, 6],
     breakMinutes: Math.max(5, Math.min(30, Number(raw.breakMinutes) || 10)),
     targetLoad: Math.max(60, Math.min(95, Number(raw.targetLoad) || 85)),
     dayStart: raw.dayStart || '05:00',
@@ -398,16 +398,15 @@ function plannerSettingsCard(canEdit) {
     '<form id="plannerSettingsForm"><div class="pc-settings-grid">' +
     '<label>بداية اليوم<input type="time" name="dayStart" class="form-control" value="' + esc(rules.dayStart) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
     '<label>نهاية اليوم<input type="time" name="dayEnd" class="form-control" value="' + esc(rules.dayEnd) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>بداية النوم<input type="time" name="sleepStart" class="form-control" value="' + esc(rules.sleepStart) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>نهاية النوم<input type="time" name="sleepEnd" class="form-control" value="' + esc(rules.sleepEnd) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>بداية العمل<input type="time" name="workStart" class="form-control" value="' + esc(rules.workStart) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>نهاية العمل<input type="time" name="workEnd" class="form-control" value="' + esc(rules.workEnd) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
+    '<label>بداية النوم<input type="time" name="sleepStart" class="form-control" value="' + esc(rules.sleepStart) + '" readonly></label>' +
+    '<label>نهاية النوم<input type="time" name="sleepEnd" class="form-control" value="' + esc(rules.sleepEnd) + '" readonly></label>' +
+    '<label>بداية العمل<input type="time" name="workStart" class="form-control" value="10:00" readonly></label>' +
+    '<label>نهاية العمل<input type="time" name="workEnd" class="form-control" value="' + esc(rules.workEnd) + '" readonly><small>تتغير تلقائيًا مع موعد المغرب</small></label>' +
     '<label>فاصل بين المهام (دقيقة)<input type="number" min="5" max="30" step="5" name="breakMinutes" class="form-control" value="' + rules.breakMinutes + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
     '<label>نسبة استغلال الوقت المستهدف<input type="number" min="60" max="95" step="5" name="targetLoad" class="form-control" value="' + rules.targetLoad + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label></div>' +
-    '<div class="pc-settings-days"><strong>أيام العمل</strong>' + dayNames.map(day =>
-      '<label><input type="checkbox" name="workDays" value="' + day.v + '" ' + (rules.workDays.includes(day.v) ? 'checked' : '') +
-      ' ' + (!cloudSettingsInitialized ? 'disabled' : '') + '><span>' + day.t + '</span></label>'
-    ).join('') + '</div>' +
+    '<div class="pc-settings-days"><strong>أيام العمل</strong><span>كل أيام الأسبوع، بما فيها الجمعة</span><div hidden>' + dayNames.map(day =>
+      '<input type="checkbox" name="workDays" value="' + day.v + '" checked disabled>'
+    ).join('') + '</div></div>' +
     '<button class="btn btn-sm btn-primary" type="submit" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '>حفظ قواعد اليوم</button>' +
     (!cloudSettingsInitialized ? '<small>افتح الإعدادات وجهّز المزامنة أولًا لحفظ القواعد بين الأجهزة.</small>' : '') +
     '</form></details>';
