@@ -49,12 +49,14 @@ const CONFIG = {
   TASKS_HEADERS: [
     'ID', 'Date', 'StartTime', 'EndTime', 'Title',
     'Category', 'Priority', 'Status', 'Note',
-    'CreatedAt', 'UpdatedAt', 'DeletedAt'
+    'CreatedAt', 'UpdatedAt', 'DeletedAt',
+    'Area', 'Project', 'DueDate', 'EstimateMinutes', 'ActualMinutes',
+    'Impact', 'Energy', 'Recurrence', 'ParentID', 'StartedAt', 'CompletedAt'
   ],
 
   SHARED_STATE_KEYS: [
     'rates', 'baseRates', 'rateHistory', 'recurringSchedules',
-    'generatedOccurrences', 'financialGoals', 'incomeSources', 'plannerTasks',
+    'generatedOccurrences', 'financialGoals', 'incomeSources', 'plannerTasks', 'plannerSettings',
     'budget', 'warn', 'accounts', 'prices'
   ],
   COLLECTION_KEY_PARTS: {
@@ -67,7 +69,7 @@ const CONFIG = {
     accounts: ['code'],
     prices: ['code']
   },
-  OBJECT_MAP_KEYS: ['rates', 'baseRates', 'budget']
+  OBJECT_MAP_KEYS: ['rates', 'baseRates', 'plannerSettings', 'budget']
 };
 
 /**
@@ -453,31 +455,41 @@ function getTransactionsSheet() {
 function getTasksSheet() {
   const ss = getSpreadsheet();
   let sheet = ss.getSheetByName(CONFIG.TASKS_SHEET_NAME);
-
-  if (!sheet) {
-    sheet = ss.insertSheet(CONFIG.TASKS_SHEET_NAME);
-  }
+  if (!sheet) sheet = ss.insertSheet(CONFIG.TASKS_SHEET_NAME);
 
   if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, CONFIG.TASKS_HEADERS.length)
-      .setValues([CONFIG.TASKS_HEADERS]);
+    sheet.getRange(1, 1, 1, CONFIG.TASKS_HEADERS.length).setValues([CONFIG.TASKS_HEADERS]);
     sheet.setFrozenRows(1);
     return sheet;
   }
 
-  const actualHeaders = sheet
-    .getRange(1, 1, 1, CONFIG.TASKS_HEADERS.length)
-    .getDisplayValues()[0]
-    .map(value => String(value).trim());
-
-  if (!CONFIG.TASKS_HEADERS.every((header, index) => actualHeaders[index] === header)) {
+  const legacyCount = 12;
+  const actualLegacy = sheet.getRange(1, 1, 1, legacyCount)
+    .getDisplayValues()[0].map(value => String(value).trim());
+  const expectedLegacy = CONFIG.TASKS_HEADERS.slice(0, legacyCount);
+  if (!expectedLegacy.every((header, index) => actualLegacy[index] === header)) {
     throw new Error(
-      'The TASKS sheet headers do not match the expected layout. ' +
-      'Expected: ' + CONFIG.TASKS_HEADERS.join(' | ') +
-      '. No existing task rows were changed.'
+      'The TASKS sheet legacy headers do not match the expected A:L layout. ' +
+      'No existing rows were changed. Expected: ' + expectedLegacy.join(' | ')
     );
   }
 
+  const extraHeaders = CONFIG.TASKS_HEADERS.slice(legacyCount);
+  const existingExtra = sheet.getRange(1, legacyCount + 1, 1, extraHeaders.length)
+    .getDisplayValues()[0].map(value => String(value).trim());
+  let needsWrite = false;
+  existingExtra.forEach((header, index) => {
+    if (header && header !== extraHeaders[index]) {
+      throw new Error(
+        'Unexpected TASKS metadata header at column ' + (legacyCount + index + 1) +
+        '. No existing task rows were changed.'
+      );
+    }
+    if (!header) needsWrite = true;
+  });
+  if (needsWrite) {
+    sheet.getRange(1, legacyCount + 1, 1, extraHeaders.length).setValues([extraHeaders]);
+  }
   sheet.setFrozenRows(1);
   return sheet;
 }
@@ -511,57 +523,87 @@ function normalizePlannerTask(input) {
   const id = String(input.id || '').trim();
   const title = String(input.title || '').trim().slice(0, 120);
   const date = normalizeDate(input.date || '');
+  const dueDate = normalizeDate(input.dueDate || '');
   const startTime = normalizePlannerTime(input.startTime);
   const endTime = normalizePlannerTime(input.endTime);
-  const allowedCategories = ['القرآن', 'القراءة', 'التعلم', 'الجيم', 'الصلاة', 'الأكل', 'الراحة', 'عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'];
-  const allowedPriorities = ['عالية', 'متوسطة', 'منخفضة'];
-  const category = allowedCategories.includes(input.category) ? input.category : 'شخصي';
-  const priority = allowedPriorities.includes(input.priority) ? input.priority : 'متوسطة';
-  const status = input.status === 'done' ? 'done' : 'todo';
+  const validTime = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || ''));
+  const statusRaw = String(input.status || 'inbox');
+  const status = statusRaw === 'todo' ? 'inbox' :
+    (['inbox', 'next', 'scheduled', 'doing', 'done', 'postponed', 'archived'].includes(statusRaw) ? statusRaw : 'inbox');
+  const priority = ['عاجل', 'عالية', 'متوسطة', 'منخفضة'].includes(input.priority) ? input.priority : 'متوسطة';
+  const estimate = Number(input.estimateMinutes);
+  const actual = Number(input.actualMinutes);
+  const impact = Number(input.impact);
   const note = String(input.note || '').trim().slice(0, 500);
+  const hasTimeSlot = Boolean(startTime || endTime);
 
   if (!id) throw new Error('Task ID is required.');
   if (!title) throw new Error('Task title is required.');
-  if (!isValidPlannerDate(date)) throw new Error('Task date must be a valid YYYY-MM-DD date.');
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) ||
-      !/^([01]\d|2[0-3]):[0-5]\d$/.test(endTime) ||
-      endTime === startTime) {
-    throw new Error('Task end time must be different from its start time. Overnight tasks are allowed.');
+  if (date && !isValidPlannerDate(date)) throw new Error('Scheduled date must be a valid YYYY-MM-DD date.');
+  if (dueDate && !isValidPlannerDate(dueDate)) throw new Error('Due date must be a valid YYYY-MM-DD date.');
+  if (hasTimeSlot) {
+    if (!date || !validTime(startTime) || !validTime(endTime) || startTime === endTime) {
+      throw new Error('A scheduled task requires a valid date, start time and end time.');
+    }
+  }
+  if (status === 'scheduled' && !hasTimeSlot) {
+    throw new Error('A scheduled task must have a date and a time slot.');
   }
 
   return {
     id,
-    date,
-    startTime,
-    endTime,
+    date: date && isValidPlannerDate(date) ? date : '',
+    startTime: hasTimeSlot ? startTime : '',
+    endTime: hasTimeSlot ? endTime : '',
     title,
-    category,
+    category: String(input.category || 'أخرى').trim().slice(0, 60),
     priority,
     status,
     note,
     createdAt: String(input.createdAt || ''),
-    updatedAt: String(input.updatedAt || '')
+    updatedAt: String(input.updatedAt || ''),
+    deletedAt: String(input.deletedAt || ''),
+    area: input.area === 'work' ? 'work' : 'personal',
+    project: String(input.project || '').trim().slice(0, 80),
+    dueDate: dueDate && isValidPlannerDate(dueDate) ? dueDate : '',
+    estimateMinutes: Number.isFinite(estimate) ? Math.max(5, Math.min(600, Math.round(estimate / 5) * 5)) : 45,
+    actualMinutes: Number.isFinite(actual) ? Math.max(0, Math.round(actual)) : 0,
+    impact: Number.isFinite(impact) ? Math.max(1, Math.min(5, Math.round(impact))) : 3,
+    energy: ['low', 'medium', 'high'].includes(input.energy) ? input.energy : 'medium',
+    recurrence: ['none', 'daily', 'weekdays', 'weekly'].includes(input.recurrence) ? input.recurrence : 'none',
+    parentId: String(input.parentId || '').slice(0, 100),
+    startedAt: String(input.startedAt || ''),
+    completedAt: String(input.completedAt || '')
   };
 }
 
 function plannerTaskFromRow(row, sheetRowNumber) {
   try {
-    return {
-      ...normalizePlannerTask({
-        id: row[0],
-        date: row[1],
-        startTime: row[2],
-        endTime: row[3],
-        title: row[4],
-        category: row[5],
-        priority: row[6],
-        status: row[7],
-        note: row[8],
-        createdAt: row[9],
-        updatedAt: row[10]
-      }),
-      deletedAt: String(row[11] || '')
-    };
+    return normalizePlannerTask({
+      id: row[0],
+      date: row[1],
+      startTime: row[2],
+      endTime: row[3],
+      title: row[4],
+      category: row[5],
+      priority: row[6],
+      status: row[7],
+      note: row[8],
+      createdAt: row[9],
+      updatedAt: row[10],
+      deletedAt: row[11],
+      area: row[12],
+      project: row[13],
+      dueDate: row[14],
+      estimateMinutes: row[15],
+      actualMinutes: row[16],
+      impact: row[17],
+      energy: row[18],
+      recurrence: row[19],
+      parentId: row[20],
+      startedAt: row[21],
+      completedAt: row[22]
+    });
   } catch (error) {
     throw new Error(
       'Invalid planner task data in TASKS sheet row ' + sheetRowNumber + ': ' +
@@ -571,19 +613,14 @@ function plannerTaskFromRow(row, sheetRowNumber) {
 }
 
 function plannerTaskToRow(task, deletedAt) {
+  const value = normalizePlannerTask(task);
   return [
-    task.id,
-    task.date,
-    task.startTime,
-    task.endTime,
-    task.title,
-    task.category,
-    task.priority,
-    task.status,
-    task.note,
-    task.createdAt,
-    task.updatedAt,
-    deletedAt || ''
+    value.id, value.date, value.startTime, value.endTime, value.title,
+    value.category, value.priority, value.status, value.note,
+    value.createdAt, value.updatedAt, deletedAt || value.deletedAt || '',
+    value.area, value.project, value.dueDate, value.estimateMinutes,
+    value.actualMinutes, value.impact, value.energy, value.recurrence,
+    value.parentId, value.startedAt, value.completedAt
   ];
 }
 

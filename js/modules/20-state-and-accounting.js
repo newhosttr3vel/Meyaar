@@ -14,6 +14,13 @@ function seed() {
     pendingFinancialGoalIds: [],
     incomeSources: [],
     plannerTasks: [],
+    plannerSettings: {
+      dayStart: '05:00', dayEnd: '22:00',
+      sleepStart: '22:00', sleepEnd: '05:00',
+      workStart: '10:00', workEnd: '19:00',
+      workDays: [0, 1, 2, 3, 4, 6],
+      breakMinutes: 10, targetLoad: 85
+    },
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
     warn: 0.9,
     accounts: [
@@ -35,6 +42,7 @@ function normalizeState(input) {
   out.ui = { ...base.ui, ...obj(input.ui) };
   if (!['dash', 'tx', 'income', 'acc', 'ast', 'set', 'aud', 'rec', 'goal', 'plan'].includes(out.ui.tab)) out.ui.tab = 'dash';
   out.ui.plannerDate = isValidISODate(out.ui.plannerDate) ? out.ui.plannerDate : localISODate();
+  out.ui.plannerView = ['today', 'inbox', 'backlog', 'week', 'projects', 'review'].includes(out.ui.plannerView) ? out.ui.plannerView : 'today';
   out.ui.y = Number.isInteger(Number(out.ui.y)) && Number(out.ui.y) >= 1900 && Number(out.ui.y) <= 2200 ? Number(out.ui.y) : base.ui.y;
   out.ui.m = out.ui.m === 'all' || /^(0[1-9]|1[0-2])$/.test(String(out.ui.m)) ? String(out.ui.m) : 'all';
   out.ui.q = String(out.ui.q || '');
@@ -182,6 +190,31 @@ function normalizeState(input) {
     })
     .filter(item => item.name);
 
+  const settings = obj(input.plannerSettings);
+  const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const cleanTime = (value, fallback) => timePattern.test(String(value || '')) ? String(value) : fallback;
+  const minuteOf = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
+  const dayStart = cleanTime(settings.dayStart, base.plannerSettings.dayStart);
+  const dayEnd = cleanTime(settings.dayEnd, base.plannerSettings.dayEnd);
+  const sleepStart = cleanTime(settings.sleepStart, base.plannerSettings.sleepStart);
+  const sleepEnd = cleanTime(settings.sleepEnd, base.plannerSettings.sleepEnd);
+  const workStart = cleanTime(settings.workStart, base.plannerSettings.workStart);
+  const workEnd = cleanTime(settings.workEnd, base.plannerSettings.workEnd);
+  const workDays = Array.isArray(settings.workDays)
+    ? [...new Set(settings.workDays.map(Number).filter(day => Number.isInteger(day) && day >= 0 && day <= 6))]
+    : base.plannerSettings.workDays.slice();
+  out.plannerSettings = {
+    dayStart: minuteOf(dayStart) < minuteOf(dayEnd) ? dayStart : base.plannerSettings.dayStart,
+    dayEnd: minuteOf(dayStart) < minuteOf(dayEnd) ? dayEnd : base.plannerSettings.dayEnd,
+    sleepStart: minuteOf(sleepStart) > minuteOf(sleepEnd) ? sleepStart : base.plannerSettings.sleepStart,
+    sleepEnd: minuteOf(sleepStart) > minuteOf(sleepEnd) ? sleepEnd : base.plannerSettings.sleepEnd,
+    workStart: minuteOf(workStart) < minuteOf(workEnd) ? workStart : base.plannerSettings.workStart,
+    workEnd: minuteOf(workStart) < minuteOf(workEnd) ? workEnd : base.plannerSettings.workEnd,
+    workDays,
+    breakMinutes: Math.max(5, Math.min(30, Math.trunc(Number(settings.breakMinutes) || 10))),
+    targetLoad: Math.max(60, Math.min(95, Math.trunc(Number(settings.targetLoad) || 85)))
+  };
+
   const plannerTaskIds = new Set();
   out.plannerTasks = (Array.isArray(input.plannerTasks) ? input.plannerTasks : [])
     .filter(item => {
@@ -191,20 +224,48 @@ function normalizeState(input) {
       plannerTaskIds.add(id);
       return true;
     })
-    .map(item => ({
-      id: String(item.id),
-      title: String(item.title || '').trim().slice(0, 120),
-      date: isValidISODate(item.date) ? item.date : localISODate(),
-      startTime: /^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(item.startTime || '')) ? String(item.startTime) : '09:00',
-      endTime: /^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(item.endTime || '')) ? String(item.endTime) : '10:00',
-      category: ['القرآن', 'القراءة', 'التعلم', 'الجيم', 'الصلاة', 'الأكل', 'الراحة', 'عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'].includes(item.category) ? item.category : 'شخصي',
-      priority: ['عالية', 'متوسطة', 'منخفضة'].includes(item.priority) ? item.priority : 'متوسطة',
-      status: ['todo', 'done'].includes(item.status) ? item.status : 'todo',
-      note: String(item.note || '').trim().slice(0, 500),
-      createdAt: String(item.createdAt || ''),
-      updatedAt: String(item.updatedAt || '')
-    }))
-    .filter(item => item.title && item.endTime > item.startTime);
+    .map(item => {
+      const rawStatus = String(item.status || 'inbox');
+      const status = rawStatus === 'todo' ? 'inbox' :
+        (['inbox', 'next', 'scheduled', 'doing', 'done', 'postponed', 'archived'].includes(rawStatus) ? rawStatus : 'inbox');
+      const rawDate = normalizeGoogleDate(item.date);
+      const rawDueDate = normalizeGoogleDate(item.dueDate);
+      const validTime = value => timePattern.test(String(value || ''));
+      let startTime = validTime(item.startTime) ? String(item.startTime) : '';
+      let endTime = validTime(item.endTime) ? String(item.endTime) : '';
+      if (!startTime || !endTime || startTime === endTime || !isValidISODate(rawDate)) {
+        startTime = '';
+        endTime = '';
+      }
+      const estimate = Number(item.estimateMinutes);
+      const actual = Number(item.actualMinutes);
+      const impact = Number(item.impact);
+      return {
+        id: String(item.id),
+        title: String(item.title || '').trim().slice(0, 120),
+        date: isValidISODate(rawDate) ? rawDate : '',
+        startTime,
+        endTime,
+        category: String(item.category || 'أخرى').trim().slice(0, 60),
+        priority: ['عاجل', 'عالية', 'متوسطة', 'منخفضة'].includes(item.priority) ? item.priority : 'متوسطة',
+        status,
+        area: item.area === 'work' ? 'work' : 'personal',
+        project: String(item.project || '').trim().slice(0, 80),
+        dueDate: isValidISODate(rawDueDate) ? rawDueDate : '',
+        estimateMinutes: Number.isFinite(estimate) ? Math.max(5, Math.min(600, Math.round(estimate / 5) * 5)) : 45,
+        actualMinutes: Number.isFinite(actual) ? Math.max(0, Math.round(actual)) : 0,
+        impact: Number.isFinite(impact) ? Math.max(1, Math.min(5, Math.round(impact))) : 3,
+        energy: ['low', 'medium', 'high'].includes(item.energy) ? item.energy : 'medium',
+        recurrence: ['none', 'daily', 'weekdays', 'weekly'].includes(item.recurrence) ? item.recurrence : 'none',
+        parentId: String(item.parentId || '').slice(0, 100),
+        startedAt: String(item.startedAt || ''),
+        completedAt: String(item.completedAt || ''),
+        note: String(item.note || '').trim().slice(0, 500),
+        createdAt: String(item.createdAt || ''),
+        updatedAt: String(item.updatedAt || '')
+      };
+    })
+    .filter(item => item.title);
 
   out.budget = { ...base.budget, ...obj(input.budget) };
   CATS.forEach(cat => {
