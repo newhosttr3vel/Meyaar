@@ -1345,7 +1345,7 @@ function normalizeState(input) {
       endTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(item.endTime || '')) ? String(item.endTime) : '10:00',
       category: ['القرآن', 'القراءة', 'التعلم', 'الجيم', 'الصلاة', 'الأكل', 'الراحة', 'عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'].includes(item.category) ? item.category : 'شخصي',
       priority: ['عالية', 'متوسطة', 'منخفضة'].includes(item.priority) ? item.priority : 'متوسطة',
-      status: ['todo', 'done'].includes(item.status) ? item.status : 'todo',
+      status: ['todo', 'partial', 'done', 'postponed', 'missed'].includes(item.status) ? item.status : 'todo',
       note: String(item.note || '').trim().slice(0, 500),
       createdAt: String(item.createdAt || ''),
       updatedAt: String(item.updatedAt || '')
@@ -3474,6 +3474,16 @@ function plannerTaskMinutes(task) {
   return end > start ? end - start : (1440 - start) + end;
 }
 
+function plannerStatusLabel(status) {
+  return ({
+    todo: 'لم تبدأ',
+    partial: 'قيد التنفيذ',
+    done: 'مكتملة',
+    postponed: 'مؤجلة',
+    missed: 'لم تُنفذ'
+  })[status] || 'لم تبدأ';
+}
+
 function plannerDurationLabel(minutes) {
   const value = Math.max(0, Math.round(Number(minutes) || 0));
   const hours = Math.floor(value / 60);
@@ -3626,12 +3636,18 @@ function plannerWeekMetrics(weekDates, tasks) {
     sum + plannerFreeWindows(date).reduce((daySum, window) => daySum + window.end - window.start, 0), 0);
   const plannedMinutes = tasks.reduce((sum, task) => sum + plannerTaskMinutes(task), 0);
   const completed = tasks.filter(task => task.status === 'done').length;
+  const inProgress = tasks.filter(task => task.status === 'partial').length;
+  const postponed = tasks.filter(task => task.status === 'postponed').length;
+  const missed = tasks.filter(task => task.status === 'missed').length;
   const conflicts = tasks.filter(task => plannerTaskHasConflict(task)).length;
   return {
     freeMinutes,
     plannedMinutes,
     remainingMinutes: Math.max(0, freeMinutes - plannedMinutes),
     completed,
+    inProgress,
+    postponed,
+    missed,
     conflicts,
     completionRate: tasks.length ? Math.round(completed / tasks.length * 100) : 0
   };
@@ -3709,12 +3725,13 @@ function plannerRenderTaskCard(task, canEdit) {
   return '<article class="planner-task-row ' + (task.status === 'done' ? 'is-done' : '') + (conflict ? ' has-conflict' : '') + '">' +
     '<div class="planner-task-row-main"><span class="planner-task-row-time">' + esc(task.startTime) + ' – ' + esc(task.endTime) + '</span>' +
     '<strong>' + esc(task.title) + '</strong><small>' + esc(task.category) + ' · ' + esc(plannerDurationLabel(plannerTaskMinutes(task))) +
-    ' · أولوية ' + esc(task.priority) + '</small>' +
+    ' · أولوية ' + esc(task.priority) + ' · الحالة: ' + esc(plannerStatusLabel(task.status)) + '</small>' +
     (conflict ? '<em><i class="bi bi-exclamation-triangle"></i> ' + esc(conflicts[0].message) + '</em>' : '') +
     '</div><div class="planner-task-row-actions">' +
-    '<button class="btn btn-sm ' + (task.status === 'done' ? 'btn-outline-secondary' : 'btn-outline-success') +
-    '" type="button" data-planner-toggle="' + esc(task.id) + '" ' + (!canEdit ? 'disabled' : '') + '>' +
-    (task.status === 'done' ? 'إعادة فتح' : 'تمت') + '</button>' +
+    '<select class="form-select form-select-sm planner-task-status" aria-label="حالة تنفيذ المهمة" data-planner-status="' + esc(task.id) + '" ' + (!canEdit ? 'disabled' : '') + '>' +
+    [['todo','لم تبدأ'],['partial','قيد التنفيذ'],['done','مكتملة'],['postponed','مؤجلة'],['missed','لم تُنفذ']].map(([value,label]) =>
+      '<option value="' + value + '" ' + (task.status === value ? 'selected' : '') + '>' + label + '</option>'
+    ).join('') + '</select>' +
     '<button class="btn btn-sm btn-outline-primary" type="button" data-planner-edit="' + esc(task.id) +
     '" ' + (!canEdit ? 'disabled' : '') + ' aria-label="تعديل المهمة"><i class="bi bi-pencil"></i></button>' +
     '<button class="btn btn-sm btn-outline-danger" type="button" data-planner-delete="' + esc(task.id) +
@@ -3837,6 +3854,10 @@ function vPlanner() {
     '<article><span>معدل الإنجاز</span><strong>' + metrics.completionRate + '%</strong><small>' + metrics.completed + ' من ' + weekTasks.length + ' مهمة</small></article>' +
     '<article class="' + (metrics.conflicts ? 'has-warning' : '') + '"><span>تعارضات</span><strong>' + metrics.conflicts + '</strong><small>' +
     (metrics.conflicts ? 'تحتاج إلى مراجعة' : 'لا توجد تعارضات مكتشفة') + '</small></article></div>' +
+    '<div class="planner-execution-summary"><span>مكتملة <strong>' + metrics.completed + '</strong></span>' +
+    '<span>قيد التنفيذ <strong>' + metrics.inProgress + '</strong></span>' +
+    '<span>مؤجلة <strong>' + metrics.postponed + '</strong></span>' +
+    '<span>لم تُنفذ <strong>' + metrics.missed + '</strong></span></div>' +
 
     '<section class="planner-section-panel"><div class="planner-section-heading"><div><span class="planner-section-kicker">01 · القواعد الثابتة</span>' +
     '<h3>التزاماتك الأساسية</h3><p>المحرك يعتبر النوم والعمل وقتًا محجوزًا ولا يضع أي نشاط فوقهما.</p></div><span class="planner-section-icon"><i class="bi bi-shield-lock"></i></span></div>' +
@@ -4386,7 +4407,21 @@ document.addEventListener('submit', async event => {
   }
 });
 
-document.addEventListener('change', event => {
+document.addEventListener('change', async event => {
+  const statusControl = event.target.closest('[data-planner-status]');
+  if (statusControl) {
+    if (!plannerCanEdit()) return;
+    const task = (S.plannerTasks || []).find(item => item.id === statusControl.dataset.plannerStatus);
+    const nextStatus = ['todo', 'partial', 'done', 'postponed', 'missed'].includes(statusControl.value)
+      ? statusControl.value : 'todo';
+    if (!task || task.status === nextStatus) return;
+    await persistPlannerTask(
+      { ...task, status: nextStatus, updatedAt: new Date().toISOString() },
+      task.updatedAt,
+      'تم تحديث حالة المهمة إلى «' + plannerStatusLabel(nextStatus) + '».'
+    );
+    return;
+  }
   if (event.target.id === 'plannerAnchorDate') {
     if (isValidISODate(event.target.value)) {
       S.ui.plannerDate = event.target.value;
