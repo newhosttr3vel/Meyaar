@@ -76,13 +76,13 @@ const S = sandbox.S;
 const ranges = windows => windows.map(window => [window.start, window.end]);
 
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'personal')))),
-  [[300, 600], [1140, 1320]],
-  'Saturday personal availability is 05:00–10:00 and 19:00–22:00');
+  [[300, 600], [1080, 1320]],
+  'Saturday personal availability is 05:00–10:00 and 18:00–22:00');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'work')))),
   [[600, 1080]], 'Saturday work availability is 10:00 until Maghrib');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-11-06', 'personal')))),
   [[300, 600], [1080, 1320]], 'Friday retains personal windows around daily work');
-assert.deepEqual(JSON.parse(JSON.stringify(api.plannerAvailableWindows('2026-11-06', 'work'))), [[600, 1140]],
+assert.deepEqual(JSON.parse(JSON.stringify(api.plannerAvailableWindows('2026-11-06', 'work'))), [[600, 1080]],
   'Friday also has a work window');
 
 const urgent = { priority: 'عاجل', impact: 5, estimateMinutes: 45, dueDate: '2026-10-31', createdAt: '2026-10-30' };
@@ -99,7 +99,7 @@ const draft = api.plannerGenerateDay('2026-10-31', S.plannerTasks);
 assert.equal(draft.tasks.length, 3, 'All fixture tasks fit within the target load');
 assert.equal(draft.unplaced.length, 0, 'No fixture task needs to be deferred');
 const workTask = draft.tasks.find(task => task.id === 'W1');
-assert.ok(workTask.startTime >= '10:00' && workTask.endTime <= '19:00',
+assert.ok(workTask.startTime >= '10:00' && workTask.endTime <= '18:00',
   'Work tasks are scheduled only inside work hours');
 assert.ok(draft.tasks.filter(task => task.area === 'personal').every(task =>
   task.endTime <= '10:00' || task.startTime >= '18:00'),
