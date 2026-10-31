@@ -56,7 +56,7 @@ const CONFIG = {
 
   SHARED_STATE_KEYS: [
     'rates', 'baseRates', 'rateHistory', 'recurringSchedules',
-    'generatedOccurrences', 'financialGoals', 'incomeSources', 'plannerSettings',
+    'generatedOccurrences', 'financialGoals', 'incomeSources', 'plannerTasks', 'plannerSettings',
     'budget', 'warn', 'accounts', 'prices'
   ],
   COLLECTION_KEY_PARTS: {
