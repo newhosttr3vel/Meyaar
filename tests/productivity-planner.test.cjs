@@ -57,7 +57,7 @@ const sandbox = {
   API_URL: 'https://example.invalid'
 };
 vm.createContext(sandbox);
-vm.runInContext(source + '\n' + routineSource + '\nplannerPrayerCache.set("2026-10-31", {Fajr:"05:00",Dhuhr:"12:00",Asr:"15:30",Maghrib:"18:00",Isha:"19:30"}); plannerPrayerCache.set("2026-11-06", {Fajr:"05:00",Dhuhr:"12:00",Asr:"15:30",Maghrib:"18:00",Isha:"19:30});\nglobalThis.__plannerTest = {' +
+vm.runInContext(source + '\n' + routineSource + '\nplannerPrayerCache.set("2026-10-31", {Fajr:"05:00",Dhuhr:"12:00",Asr:"15:30",Maghrib:"18:00",Isha:"19:30"}); plannerPrayerCache.set("2026-11-06", {Fajr:"05:00",Dhuhr:"12:00",Asr:"15:30",Maghrib:"18:00",Isha:"19:30"});\nglobalThis.__plannerTest = {' +
   'plannerAvailableWindows: plannerAvailableWindows,' +
   'plannerPrayerAndRoutinePanel: plannerPrayerAndRoutinePanel,' +
   'plannerCleanPrayerTime: plannerCleanPrayerTime,' +
