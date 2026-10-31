@@ -318,16 +318,16 @@ assert.match(html, /id="txFxPreview"/, 'The transaction FX preview is visible to
 assert.match(source, /function openTransfer\(tx = null\)/, 'The transfer modal opener exists');
 assert.match(source, /TYPES\.filter\(type => type !== 'تحويل' && type !== 'تسوية'\)/, 'New transfers are routed through the paired workflow');
 assert.match(source, /async function deleteLinkedTransfer\(tx\)/, 'Transfers are handled as linked pairs for deletion');
-assert.match(html, /style\.css\?v=20261029-planner1/, 'Updated CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-tasksheet2/, 'Updated JS cache version is active');
+assert.match(html, /style\.css\?v=20261031-planner-v2/, 'Updated CSS cache version is active');
+assert.match(html, /app\.js\?v=20261031-planner-v2d/, 'Updated JS cache version is active');
 assert.match(html, /data-tab="rec"/, 'The recurring obligations tab is present');
 assert.match(html, /id="modalRecurring"/, 'The recurring obligation editor exists');
 assert.match(html, /id="formRecurring"/, 'The recurring obligation form exists');
 for (const id of ['recName', 'recType', 'recAmount', 'recCurrency', 'recCategory', 'recAccount', 'recStartDate', 'recDueDay', 'recReminderDays']) {
   assert.ok(html.includes('id="' + id + '"'), 'Recurring form field ' + id + ' exists');
 }
-assert.match(html, /style\.css\?v=20261029-planner1/, 'Recurring CSS cache version is active');
-assert.match(html, /app\.js\?v=20261029-tasksheet2/, 'Recurring JS cache version is active');
+assert.match(html, /style\.css\?v=20261031-planner-v2/, 'Recurring CSS cache version is active');
+assert.match(html, /app\.js\?v=20261031-planner-v2d/, 'Recurring JS cache version is active');
 assert.match(html, /id="btnSidebarToggle"/, 'The sidebar toggle is present');
 assert.match(html, /id="appSidebar"/, 'The collapsible sidebar is present');
 assert.match(html, /id="sidebarBackdrop"/, 'The sidebar backdrop is present');
