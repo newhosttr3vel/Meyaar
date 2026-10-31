@@ -20,6 +20,7 @@ function isValidISODate(value) {
   return Number.isFinite(date.getTime()) && isoDate(date) === value;
 }
 
+let plannerRenderCount = 0;
 const sandbox = {
   S: {
     plannerSettings: {
@@ -28,7 +29,8 @@ const sandbox = {
       workStart: '10:00', workEnd: '19:00',
       workDays: [0, 1, 2, 3, 4, 6], breakMinutes: 10, targetLoad: 85
     },
-    plannerTasks: []
+    plannerTasks: [],
+    ui: { tab: 'dash' }
   },
   document: { addEventListener() {} },
   isValidISODate,
@@ -39,11 +41,15 @@ const sandbox = {
   plannerLoadInFlight: false,
   plannerDeletedIds: new Set(),
   plannerLegacyBaselineTasks: [],
+  plannerCloudStatus: '',
+  plannerCloudLastUpdated: '',
+  normalizeState: value => value,
+  fetch: () => Promise.reject(new Error('fetch mock not configured')),
   esc: value => String(value ?? ''),
   console,
   showAppToast() {},
   save() {},
-  render() {},
+  render() { plannerRenderCount++; },
   $() { return null; },
   API_URL: 'https://example.invalid'
 };
@@ -54,7 +60,8 @@ vm.runInContext(source + '\nglobalThis.__plannerTest = {' +
   'plannerTaskConflicts: plannerTaskConflicts,' +
   'plannerTaskSegments: plannerTaskSegments,' +
   'plannerTaskMinutes: plannerTaskMinutes,' +
-  'plannerPriorityScore: plannerPriorityScore' +
+  'plannerPriorityScore: plannerPriorityScore,' +
+  'loadPlannerTasksFromGoogle: loadPlannerTasksFromGoogle' +
   '};', sandbox, { filename: 'productivity-planner.js' });
 const api = sandbox.__plannerTest;
 const S = sandbox.S;
@@ -140,4 +147,33 @@ S.plannerSettings.sleepStart = '21:00';
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'personal')))),
   [[360, 600], [1140, 1260]], 'Custom sleep boundaries update personal availability');
 
-console.log('Productivity planner tests passed: task scoring, separate work/personal capacity, time blocking, buffers and conflict detection.');
+(async function testQueuedRenderAfterInitialPlannerLoad() {
+  let releaseFetch;
+  sandbox.fetch = () => new Promise(resolve => { releaseFetch = resolve; });
+  sandbox.S.ui.tab = 'dash';
+  sandbox.plannerCloudInitialized = false;
+  sandbox.cloudPlannerSupported = false;
+  sandbox.plannerLoadInFlight = false;
+  plannerRenderCount = 0;
+
+  const initialLoad = api.loadPlannerTasksFromGoogle({ renderAfter: false });
+  assert.equal(sandbox.plannerLoadInFlight, true, 'Initial planner request remains in flight');
+
+  // Simulate opening the planner before the first task request has completed.
+  sandbox.S.ui.tab = 'plan';
+  await api.loadPlannerTasksFromGoogle({ renderAfter: true });
+  releaseFetch({
+    ok: true,
+    json: async () => ({ success: true, tasks: [], deletedIds: [], updatedAt: 'test' })
+  });
+  await initialLoad;
+
+  assert.equal(sandbox.plannerCloudInitialized, true, 'Successful task response initializes planner sync');
+  assert.equal(sandbox.plannerLoadInFlight, false, 'Planner load lock is released');
+  assert.equal(plannerRenderCount, 1, 'Planner re-renders after the initial request finishes');
+})().then(() => {
+  console.log('Productivity planner tests passed: task scoring, capacity, scheduling, conflicts and queued navigation rendering.');
+}).catch(error => {
+  console.error(error);
+  throw error;
+});
