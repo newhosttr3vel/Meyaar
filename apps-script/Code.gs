@@ -518,7 +518,7 @@ function normalizePlannerTask(input) {
   const allowedPriorities = ['عالية', 'متوسطة', 'منخفضة'];
   const category = allowedCategories.includes(input.category) ? input.category : 'شخصي';
   const priority = allowedPriorities.includes(input.priority) ? input.priority : 'متوسطة';
-  const status = input.status === 'done' ? 'done' : 'todo';
+  const status = ['todo', 'partial', 'done', 'postponed', 'missed'].includes(input.status) ? input.status : 'todo';
   const note = String(input.note || '').trim().slice(0, 500);
 
   if (!id) throw new Error('Task ID is required.');
