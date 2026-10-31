@@ -1107,7 +1107,7 @@ function seed() {
       dayStart: '05:00', dayEnd: '22:00',
       sleepStart: '22:00', sleepEnd: '05:00',
       workStart: '10:00', workEnd: '19:00',
-      workDays: [0, 1, 2, 3, 4, 6],
+      workDays: [0, 1, 2, 3, 4, 5, 6],
       breakMinutes: 10, targetLoad: 85
     },
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
@@ -1299,7 +1299,7 @@ function normalizeState(input) {
     sleepEnd: minuteOf(sleepStart) > minuteOf(sleepEnd) ? sleepEnd : base.plannerSettings.sleepEnd,
     workStart: minuteOf(workStart) < minuteOf(workEnd) ? workStart : base.plannerSettings.workStart,
     workEnd: minuteOf(workStart) < minuteOf(workEnd) ? workEnd : base.plannerSettings.workEnd,
-    workDays,
+    workDays: [0, 1, 2, 3, 4, 5, 6],
     breakMinutes: Math.max(5, Math.min(30, Math.trunc(Number(settings.breakMinutes) || 10))),
     targetLoad: Math.max(60, Math.min(95, Math.trunc(Number(settings.targetLoad) || 85)))
   };
@@ -3427,7 +3427,7 @@ function plannerRules() {
     sleepEnd: raw.sleepEnd || '05:00',
     workStart: raw.workStart || '10:00',
     workEnd: raw.workEnd || '19:00',
-    workDays: Array.isArray(raw.workDays) ? raw.workDays : [0, 1, 2, 3, 4, 6],
+    workDays: Array.isArray(raw.workDays) ? raw.workDays : [0, 1, 2, 3, 4, 5, 6],
     breakMinutes: Math.max(5, Math.min(30, Number(raw.breakMinutes) || 10)),
     targetLoad: Math.max(60, Math.min(95, Number(raw.targetLoad) || 85)),
     dayStart: raw.dayStart || '05:00',
@@ -3537,7 +3537,7 @@ function plannerDayOfWeek(date) {
   return new Date(date + 'T12:00:00').getDay();
 }
 
-function plannerAvailableWindows(date, area) {
+function plannerAvailableWindowsBase(date, area) {
   const rules = plannerRules();
   const configuredStart = plannerTimeMinutes(rules.dayStart);
   const configuredEnd = plannerTimeMinutes(rules.dayEnd);
@@ -3713,7 +3713,7 @@ function plannerFilteredTasks(tasks) {
   });
 }
 
-function plannerRenderTimeline(date, tasks, canEdit) {
+function plannerRenderTimelineBase(date, tasks, canEdit) {
   const scheduled = tasks.filter(task => task.date === date && plannerTaskHasSlot(task) && task.status !== 'archived')
     .sort((a, b) => plannerTimeMinutes(a.startTime) - plannerTimeMinutes(b.startTime));
   const blocks = ['personal', 'work'].map(area => {
@@ -3790,21 +3790,22 @@ function plannerTaskForm(editing, canEdit, defaultDate) {
 
 function plannerSettingsCard(canEdit) {
   const rules = plannerRules();
+  const selectedPrayerTimes = typeof plannerPrayerTimesFor === 'function' ? plannerPrayerTimesFor(S.ui.plannerDate || plannerEgyptISODate()) : null;
+  const selectedMaghrib = selectedPrayerTimes && selectedPrayerTimes.Maghrib ? plannerMinutesTime(Math.min(1439, plannerTimeMinutes(selectedPrayerTimes.Maghrib) + 60)) : rules.workEnd;
   const dayNames = [{v:6,t:'سبت'},{v:0,t:'أحد'},{v:1,t:'اثنين'},{v:2,t:'ثلاثاء'},{v:3,t:'أربعاء'},{v:4,t:'خميس'},{v:5,t:'جمعة'}];
   return '<details class="pc-settings"><summary><i class="bi bi-sliders"></i> ضبط ساعات اليوم وقواعد التخطيط</summary>' +
     '<form id="plannerSettingsForm"><div class="pc-settings-grid">' +
-    '<label>بداية اليوم<input type="time" name="dayStart" class="form-control" value="' + esc(rules.dayStart) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>نهاية اليوم<input type="time" name="dayEnd" class="form-control" value="' + esc(rules.dayEnd) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>بداية النوم<input type="time" name="sleepStart" class="form-control" value="' + esc(rules.sleepStart) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>نهاية النوم<input type="time" name="sleepEnd" class="form-control" value="' + esc(rules.sleepEnd) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>بداية العمل<input type="time" name="workStart" class="form-control" value="' + esc(rules.workStart) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>نهاية العمل<input type="time" name="workEnd" class="form-control" value="' + esc(rules.workEnd) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
+    '<label>بداية اليوم<input type="time" name="dayStart" class="form-control" value="' + esc(rules.dayStart) + '" readonly></label>' +
+    '<label>نهاية اليوم<input type="time" name="dayEnd" class="form-control" value="' + esc(rules.dayEnd) + '" readonly></label>' +
+    '<label>بداية النوم<input type="time" name="sleepStart" class="form-control" value="' + esc(rules.sleepStart) + '" readonly></label>' +
+    '<label>نهاية النوم<input type="time" name="sleepEnd" class="form-control" value="' + esc(rules.sleepEnd) + '" readonly></label>' +
+    '<label>بداية العمل<input type="time" name="workStart" class="form-control" value="10:00" readonly></label>' +
+    '<label>نهاية العمل<input type="time" name="workEnd" class="form-control" value="' + esc(selectedMaghrib) + '" readonly><small>تتغير تلقائيًا إلى ساعة بعد المغرب</small></label>' +
     '<label>فاصل بين المهام (دقيقة)<input type="number" min="5" max="30" step="5" name="breakMinutes" class="form-control" value="' + rules.breakMinutes + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
     '<label>نسبة استغلال الوقت المستهدف<input type="number" min="60" max="95" step="5" name="targetLoad" class="form-control" value="' + rules.targetLoad + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label></div>' +
-    '<div class="pc-settings-days"><strong>أيام العمل</strong>' + dayNames.map(day =>
-      '<label><input type="checkbox" name="workDays" value="' + day.v + '" ' + (rules.workDays.includes(day.v) ? 'checked' : '') +
-      ' ' + (!cloudSettingsInitialized ? 'disabled' : '') + '><span>' + day.t + '</span></label>'
-    ).join('') + '</div>' +
+    '<div class="pc-settings-days"><strong>أيام العمل</strong><span>كل أيام الأسبوع، بما فيها الجمعة</span><div hidden>' + dayNames.map(day =>
+      '<input type="checkbox" name="workDays" value="' + day.v + '" checked disabled>'
+    ).join('') + '</div></div>' +
     '<button class="btn btn-sm btn-primary" type="submit" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '>حفظ قواعد اليوم</button>' +
     (!cloudSettingsInitialized ? '<small>افتح الإعدادات وجهّز المزامنة أولًا لحفظ القواعد بين الأجهزة.</small>' : '') +
     '</form></details>';
@@ -3969,7 +3970,8 @@ function plannerDraftPanel() {
 }
 
 function vPlanner() {
-  const date=isValidISODate(S.ui.plannerDate)?S.ui.plannerDate:localISODate();
+  const date=isValidISODate(S.ui.plannerDate)?S.ui.plannerDate:(typeof plannerEgyptISODate==='function'?plannerEgyptISODate():localISODate());
+  if(typeof plannerEnsurePrayerTimes==='function')plannerEnsurePrayerTimes(date);
   const view=['today','inbox','backlog','week','projects','review'].includes(S.ui.plannerView)?S.ui.plannerView:'today';
   const tasks=Array.isArray(S.plannerTasks)?S.plannerTasks:[];
   const canEdit=plannerCanEdit();
@@ -4360,6 +4362,124 @@ document.addEventListener('click',async event=>{
     return;
   }
 });
+/* MEYAAR FIXED DAILY ROUTINES + EGYPT PRAYER TIMES
+   Routine rules are shared through plannerSettings; daily prayer times are calculated
+   for the selected date and fetched independently on every device. */
+const PLANNER_PRAYER_CITY = 'Kafr El Sheikh';
+const PLANNER_PRAYER_COUNTRY = 'Egypt';
+const PLANNER_PRAYER_METHOD = 5; // Egyptian General Authority of Survey
+const PLANNER_PRAYER_TIMEZONE = 'Africa/Cairo';
+const PLANNER_PRAYER_NAMES = [
+  ['Fajr', 'الفجر'], ['Dhuhr', 'الظهر'], ['Asr', 'العصر'],
+  ['Maghrib', 'المغرب'], ['Isha', 'العشاء']
+];
+const plannerPrayerCache = new Map();
+const plannerPrayerPending = new Set();
+const plannerPrayerErrors = new Map();
+
+function plannerEgyptISODate() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: PLANNER_PRAYER_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const part = type => parts.find(item => item.type === type)?.value || '';
+  return part('year') + '-' + part('month') + '-' + part('day');
+}
+
+function plannerPrayerApiDate(date) {
+  const [year, month, day] = String(date).split('-');
+  return day + '-' + month + '-' + year;
+}
+
+function plannerCleanPrayerTime(value) {
+  const match = String(value || '').match(/(?:^|\s)([01]?\d|2[0-3]):([0-5]\d)(?:\s|$)/);
+  return match ? String(match[1]).padStart(2, '0') + ':' + match[2] : '';
+}
+
+function plannerEnsurePrayerTimes(date, force = false) {
+  if (!isValidISODate(date) || plannerPrayerPending.has(date)) return;
+  if (!force && (plannerPrayerCache.has(date) || plannerPrayerErrors.has(date))) return;
+  plannerPrayerPending.add(date);
+  const url = 'https://api.aladhan.com/v1/timingsByCity/' + encodeURIComponent(plannerPrayerApiDate(date)) +
+    '?city=' + encodeURIComponent(PLANNER_PRAYER_CITY) +
+    '&country=' + encodeURIComponent(PLANNER_PRAYER_COUNTRY) +
+    '&method=' + PLANNER_PRAYER_METHOD;
+  fetch(url, { method: 'GET', cache: 'no-store' })
+    .then(response => {
+      if (!response.ok) throw new Error('Prayer API HTTP ' + response.status);
+      return response.json();
+    })
+    .then(payload => {
+      const raw = payload && payload.data && payload.data.timings;
+      if (!raw) throw new Error('Prayer API returned no timings');
+      const times = {};
+      PLANNER_PRAYER_NAMES.forEach(([key]) => { times[key] = plannerCleanPrayerTime(raw[key]); });
+      if (PLANNER_PRAYER_NAMES.some(([key]) => !times[key])) throw new Error('Incomplete prayer timings');
+      plannerPrayerCache.set(date, times);
+      plannerPrayerErrors.delete(date);
+    })
+    .catch(error => {
+      plannerPrayerErrors.set(date, error && error.message ? error.message : 'تعذر تحميل مواقيت الصلاة');
+      console.error('تعذر تحميل مواقيت الصلاة:', error);
+    })
+    .finally(() => {
+      plannerPrayerPending.delete(date);
+      if (S && S.ui && S.ui.tab === 'plan' && S.ui.plannerDate === date) render();
+    });
+}
+
+function plannerPrayerTimesFor(date) {
+  return plannerPrayerCache.get(date) || null;
+}
+
+function plannerAvailableWindows(date, area) {
+  const settings = S.plannerSettings || (S.plannerSettings = {});
+  const originalWorkEnd = settings.workEnd;
+  const prayerTimes = plannerPrayerTimesFor(date);
+  if (area === 'work') {
+    if (!prayerTimes || !prayerTimes.Maghrib) return [];
+    const maghribMinutes = plannerTimeMinutes(prayerTimes.Maghrib);
+    settings.workEnd = plannerMinutesTime(Math.min(1439, maghribMinutes + 60));
+  }
+  try {
+    return plannerAvailableWindowsBase(date, area);
+  } finally {
+    settings.workEnd = originalWorkEnd;
+  }
+}
+
+function plannerPrayerAndRoutinePanel(date) {
+  const times = plannerPrayerTimesFor(date);
+  const error = plannerPrayerErrors.get(date);
+  const prayerRows = times
+    ? PLANNER_PRAYER_NAMES.map(([key, label]) =>
+        '<div class="pc-routine-prayer"><span>' + label + '</span><strong>' + esc(times[key]) + '</strong></div>'
+      ).join('')
+    : '<div class="pc-routine-loading">' +
+        (error ? 'تعذر تحديث مواقيت الصلاة. <button type="button" class="btn btn-sm btn-outline-primary" id="btnPlannerPrayerRetry">إعادة المحاولة</button>'
+          : 'جارٍ تحديث مواقيت الصلاة حسب التاريخ المحدد…') + '</div>';
+  const maghribMinutes = times && times.Maghrib ? plannerTimeMinutes(times.Maghrib) : NaN;
+  const workEnd = Number.isFinite(maghribMinutes) ? plannerMinutesTime(Math.min(1439, maghribMinutes + 60)) : 'يتحدد مع المغرب';
+  return '<section class="pc-routine-panel">' +
+    '<header><div><span class="pc-section-kicker">مواعيدك الثابتة</span><h4>روتين اليوم</h4></div>' +
+    '<small>كفر الشيخ · توقيت مصر</small></header>' +
+    '<div class="pc-routine-fixed">' +
+      '<div><span>النوم</span><strong>10:00 م – 5:00 ص</strong><small>كل الأيام عدا الجمعة</small></div>' +
+      '<div><span>الشغل</span><strong>10:00 ص – ' + esc(workEnd) + '</strong><small>يوميًا حتى أذان المغرب</small></div>' +
+    '</div>' +
+    '<div class="pc-routine-prayers">' + prayerRows + '</div>' +
+    '<footer>مواقيت الصلاة تُحدّث تلقائيًا لكل يوم · طريقة الحساب: الهيئة المصرية العامة للمساحة</footer>' +
+    '</section>';
+}
+
+function plannerRenderTimeline(date, tasks, canEdit) {
+  return plannerPrayerAndRoutinePanel(date) + plannerRenderTimelineBase(date, tasks, canEdit);
+}
+
+document.addEventListener('click', event => {
+  if (!event.target.closest('#btnPlannerPrayerRetry')) return;
+  plannerEnsurePrayerTimes(S.ui.plannerDate || plannerEgyptISODate(), true);
+  render();
+}, true);
 if (S.ui.theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
 else document.documentElement.setAttribute('data-theme', 'light');
 

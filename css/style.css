@@ -4322,3 +4322,10 @@ body.sidebar-open {
 .pc-running-panel>div{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding-top:.35rem;border-top:1px solid var(--bd)}
 .pc-running-panel>div span{color:var(--tx);font-size:.73rem;font-weight:800}
 .pc-running-panel>div small{color:var(--mut);font-size:.64rem}
+
+/* Fixed routine and daily prayer times */
+.pc-routine-panel{background:var(--bs-body-bg,#fff);border:1px solid var(--bs-border-color,#dfe5eb);border-radius:16px;padding:16px;margin-bottom:16px;box-shadow:0 6px 20px rgba(20,45,65,.05)}
+.pc-routine-panel>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.pc-routine-panel>header h4{margin:2px 0 0;font-size:1.05rem}.pc-routine-panel>header small,.pc-routine-panel footer,.pc-routine-fixed small{color:var(--bs-secondary-color,#6c757d);font-size:.78rem}
+.pc-routine-fixed{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px}.pc-routine-fixed>div{display:flex;flex-direction:column;gap:3px;padding:11px;border-radius:12px;background:rgba(24,111,120,.07)}.pc-routine-fixed span,.pc-routine-prayer span{font-size:.8rem;color:var(--bs-secondary-color,#6c757d)}.pc-routine-fixed strong{font-size:.95rem}
+.pc-routine-prayers{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.pc-routine-prayer{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 6px;border:1px solid var(--bs-border-color,#e2e7ec);border-radius:10px}.pc-routine-prayer strong{font-size:1rem}.pc-routine-loading{grid-column:1/-1;padding:10px;text-align:center;color:var(--bs-secondary-color,#6c757d)}.pc-routine-panel footer{margin-top:10px}
+@media(max-width:640px){.pc-routine-fixed{grid-template-columns:1fr}.pc-routine-prayers{grid-template-columns:repeat(3,minmax(0,1fr))}}

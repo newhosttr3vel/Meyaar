@@ -105,7 +105,7 @@ assert.match(plannerModule, /function plannerGenerateDay\(/,
   'The productivity planner has an automatic day-scheduling engine');
 assert.match(plannerModule, /function plannerPriorityScore\(/,
   'Task priority uses urgency, impact, priority and effort');
-assert.match(plannerModule, /function plannerAvailableWindows\(/,
+assert.match(plannerModule, /function plannerAvailableWindowsBase\(/,
   'Personal and work availability are calculated separately');
 assert.match(plannerModule, /data-planner-focus-start/,
   'Tasks support focus sessions and actual-time tracking');

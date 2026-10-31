@@ -7,6 +7,9 @@ const vm = require('node:vm');
 
 const plannerPath = path.join(__dirname, '..', 'js', 'modules', '70-daily-weekly-planner.js');
 const source = fs.readFileSync(plannerPath, 'utf8');
+const routinePath = path.join(__dirname, '..', 'js', 'modules', '75-routine-schedule.js');
+const routineSource = fs.readFileSync(routinePath, 'utf8');
+assert.doesNotThrow(() => new vm.Script(routineSource, { filename: routinePath }), 'Routine schedule module must parse');
 assert.doesNotThrow(() => new vm.Script(source, { filename: plannerPath }),
   'Productivity planner module must parse');
 
@@ -27,7 +30,7 @@ const sandbox = {
       dayStart: '05:00', dayEnd: '22:00',
       sleepStart: '22:00', sleepEnd: '05:00',
       workStart: '10:00', workEnd: '19:00',
-      workDays: [0, 1, 2, 3, 4, 6], breakMinutes: 10, targetLoad: 85
+      workDays: [0, 1, 2, 3, 4, 5, 6], breakMinutes: 10, targetLoad: 85
     },
     plannerTasks: [],
     ui: { tab: 'dash' }
@@ -54,8 +57,10 @@ const sandbox = {
   API_URL: 'https://example.invalid'
 };
 vm.createContext(sandbox);
-vm.runInContext(source + '\nglobalThis.__plannerTest = {' +
+vm.runInContext(source + '\n' + routineSource + '\nplannerPrayerCache.set("2026-10-31", {Fajr:"05:00",Dhuhr:"12:00",Asr:"15:30",Maghrib:"18:00",Isha:"19:30"}); plannerPrayerCache.set("2026-11-06", {Fajr:"05:00",Dhuhr:"12:00",Asr:"15:30",Maghrib:"18:00",Isha:"19:30"});\nglobalThis.__plannerTest = {' +
   'plannerAvailableWindows: plannerAvailableWindows,' +
+  'plannerPrayerAndRoutinePanel: plannerPrayerAndRoutinePanel,' +
+  'plannerCleanPrayerTime: plannerCleanPrayerTime,' +
   'plannerGenerateDay: plannerGenerateDay,' +
   'plannerTaskConflicts: plannerTaskConflicts,' +
   'plannerTaskSegments: plannerTaskSegments,' +
@@ -64,6 +69,9 @@ vm.runInContext(source + '\nglobalThis.__plannerTest = {' +
   'loadPlannerTasksFromGoogle: loadPlannerTasksFromGoogle' +
   '};', sandbox, { filename: 'productivity-planner.js' });
 const api = sandbox.__plannerTest;
+assert.equal(api.plannerCleanPrayerTime('18:04 (EET)'), '18:04', 'Prayer times are normalized from API timezone suffixes');
+assert.ok(api.plannerPrayerAndRoutinePanel('2026-10-31').includes('10:00 ص – 19:00'), 'Work ends at the Maghrib time returned for the selected date');
+assert.ok(api.plannerPrayerAndRoutinePanel('2026-10-31').includes('كل الأيام عدا الجمعة'), 'Sleep routine is marked off on Friday');
 const S = sandbox.S;
 const ranges = windows => windows.map(window => [window.start, window.end]);
 
@@ -71,11 +79,11 @@ assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2
   [[300, 600], [1140, 1320]],
   'Saturday personal availability is 05:00–10:00 and 19:00–22:00');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'work')))),
-  [[600, 1140]], 'Saturday work availability is 10:00–19:00');
+  [[600, 1140]], 'Saturday work availability is 10:00 until one hour after Maghrib');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-11-06', 'personal')))),
-  [[300, 1320]], 'Friday is open for personal tasks from 05:00 to 22:00');
-assert.deepEqual(JSON.parse(JSON.stringify(api.plannerAvailableWindows('2026-11-06', 'work'))), [],
-  'Friday has no fixed work window');
+  [[300, 600], [1140, 1320]], 'Friday retains personal windows around daily work');
+assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-11-06', 'work')))), [[600, 1140]],
+  'Friday also has a work window');
 
 const urgent = { priority: 'عاجل', impact: 5, estimateMinutes: 45, dueDate: '2026-10-31', createdAt: '2026-10-30' };
 const low = { priority: 'منخفضة', impact: 1, estimateMinutes: 60, dueDate: '2026-11-20', createdAt: '2026-10-30' };
@@ -91,7 +99,7 @@ const draft = api.plannerGenerateDay('2026-10-31', S.plannerTasks);
 assert.equal(draft.tasks.length, 3, 'All fixture tasks fit within the target load');
 assert.equal(draft.unplaced.length, 0, 'No fixture task needs to be deferred');
 const workTask = draft.tasks.find(task => task.id === 'W1');
-assert.ok(workTask.startTime >= '10:00' && workTask.endTime <= '19:00',
+assert.ok(workTask.startTime >= '10:00' && workTask.endTime <= '18:00',
   'Work tasks are scheduled only inside work hours');
 assert.ok(draft.tasks.filter(task => task.area === 'personal').every(task =>
   task.endTime <= '10:00' || task.startTime >= '19:00'),

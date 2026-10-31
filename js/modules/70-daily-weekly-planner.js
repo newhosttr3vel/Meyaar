@@ -30,7 +30,7 @@ function plannerRules() {
     sleepEnd: raw.sleepEnd || '05:00',
     workStart: raw.workStart || '10:00',
     workEnd: raw.workEnd || '19:00',
-    workDays: Array.isArray(raw.workDays) ? raw.workDays : [0, 1, 2, 3, 4, 6],
+    workDays: Array.isArray(raw.workDays) ? raw.workDays : [0, 1, 2, 3, 4, 5, 6],
     breakMinutes: Math.max(5, Math.min(30, Number(raw.breakMinutes) || 10)),
     targetLoad: Math.max(60, Math.min(95, Number(raw.targetLoad) || 85)),
     dayStart: raw.dayStart || '05:00',
@@ -140,7 +140,7 @@ function plannerDayOfWeek(date) {
   return new Date(date + 'T12:00:00').getDay();
 }
 
-function plannerAvailableWindows(date, area) {
+function plannerAvailableWindowsBase(date, area) {
   const rules = plannerRules();
   const configuredStart = plannerTimeMinutes(rules.dayStart);
   const configuredEnd = plannerTimeMinutes(rules.dayEnd);
@@ -316,7 +316,7 @@ function plannerFilteredTasks(tasks) {
   });
 }
 
-function plannerRenderTimeline(date, tasks, canEdit) {
+function plannerRenderTimelineBase(date, tasks, canEdit) {
   const scheduled = tasks.filter(task => task.date === date && plannerTaskHasSlot(task) && task.status !== 'archived')
     .sort((a, b) => plannerTimeMinutes(a.startTime) - plannerTimeMinutes(b.startTime));
   const blocks = ['personal', 'work'].map(area => {
@@ -393,21 +393,22 @@ function plannerTaskForm(editing, canEdit, defaultDate) {
 
 function plannerSettingsCard(canEdit) {
   const rules = plannerRules();
+  const selectedPrayerTimes = typeof plannerPrayerTimesFor === 'function' ? plannerPrayerTimesFor(S.ui.plannerDate || plannerEgyptISODate()) : null;
+  const selectedMaghrib = selectedPrayerTimes && selectedPrayerTimes.Maghrib ? plannerMinutesTime(Math.min(1439, plannerTimeMinutes(selectedPrayerTimes.Maghrib) + 60)) : rules.workEnd;
   const dayNames = [{v:6,t:'سبت'},{v:0,t:'أحد'},{v:1,t:'اثنين'},{v:2,t:'ثلاثاء'},{v:3,t:'أربعاء'},{v:4,t:'خميس'},{v:5,t:'جمعة'}];
   return '<details class="pc-settings"><summary><i class="bi bi-sliders"></i> ضبط ساعات اليوم وقواعد التخطيط</summary>' +
     '<form id="plannerSettingsForm"><div class="pc-settings-grid">' +
-    '<label>بداية اليوم<input type="time" name="dayStart" class="form-control" value="' + esc(rules.dayStart) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>نهاية اليوم<input type="time" name="dayEnd" class="form-control" value="' + esc(rules.dayEnd) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>بداية النوم<input type="time" name="sleepStart" class="form-control" value="' + esc(rules.sleepStart) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>نهاية النوم<input type="time" name="sleepEnd" class="form-control" value="' + esc(rules.sleepEnd) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>بداية العمل<input type="time" name="workStart" class="form-control" value="' + esc(rules.workStart) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
-    '<label>نهاية العمل<input type="time" name="workEnd" class="form-control" value="' + esc(rules.workEnd) + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
+    '<label>بداية اليوم<input type="time" name="dayStart" class="form-control" value="' + esc(rules.dayStart) + '" readonly></label>' +
+    '<label>نهاية اليوم<input type="time" name="dayEnd" class="form-control" value="' + esc(rules.dayEnd) + '" readonly></label>' +
+    '<label>بداية النوم<input type="time" name="sleepStart" class="form-control" value="' + esc(rules.sleepStart) + '" readonly></label>' +
+    '<label>نهاية النوم<input type="time" name="sleepEnd" class="form-control" value="' + esc(rules.sleepEnd) + '" readonly></label>' +
+    '<label>بداية العمل<input type="time" name="workStart" class="form-control" value="10:00" readonly></label>' +
+    '<label>نهاية العمل<input type="time" name="workEnd" class="form-control" value="' + esc(selectedMaghrib) + '" readonly><small>تتغير تلقائيًا إلى ساعة بعد المغرب</small></label>' +
     '<label>فاصل بين المهام (دقيقة)<input type="number" min="5" max="30" step="5" name="breakMinutes" class="form-control" value="' + rules.breakMinutes + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label>' +
     '<label>نسبة استغلال الوقت المستهدف<input type="number" min="60" max="95" step="5" name="targetLoad" class="form-control" value="' + rules.targetLoad + '" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '></label></div>' +
-    '<div class="pc-settings-days"><strong>أيام العمل</strong>' + dayNames.map(day =>
-      '<label><input type="checkbox" name="workDays" value="' + day.v + '" ' + (rules.workDays.includes(day.v) ? 'checked' : '') +
-      ' ' + (!cloudSettingsInitialized ? 'disabled' : '') + '><span>' + day.t + '</span></label>'
-    ).join('') + '</div>' +
+    '<div class="pc-settings-days"><strong>أيام العمل</strong><span>كل أيام الأسبوع، بما فيها الجمعة</span><div hidden>' + dayNames.map(day =>
+      '<input type="checkbox" name="workDays" value="' + day.v + '" checked disabled>'
+    ).join('') + '</div></div>' +
     '<button class="btn btn-sm btn-primary" type="submit" ' + (!cloudSettingsInitialized ? 'disabled' : '') + '>حفظ قواعد اليوم</button>' +
     (!cloudSettingsInitialized ? '<small>افتح الإعدادات وجهّز المزامنة أولًا لحفظ القواعد بين الأجهزة.</small>' : '') +
     '</form></details>';
@@ -572,7 +573,8 @@ function plannerDraftPanel() {
 }
 
 function vPlanner() {
-  const date=isValidISODate(S.ui.plannerDate)?S.ui.plannerDate:localISODate();
+  const date=isValidISODate(S.ui.plannerDate)?S.ui.plannerDate:(typeof plannerEgyptISODate==='function'?plannerEgyptISODate():localISODate());
+  if(typeof plannerEnsurePrayerTimes==='function')plannerEnsurePrayerTimes(date);
   const view=['today','inbox','backlog','week','projects','review'].includes(S.ui.plannerView)?S.ui.plannerView:'today';
   const tasks=Array.isArray(S.plannerTasks)?S.plannerTasks:[];
   const canEdit=plannerCanEdit();
