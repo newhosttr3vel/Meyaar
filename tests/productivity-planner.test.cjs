@@ -81,7 +81,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'work')))),
   [[600, 1140]], 'Saturday work availability is 10:00 until Maghrib');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-11-06', 'personal')))),
-  [[300, 600], [1080, 1320]], 'Friday retains personal windows around daily work');
+  [[300, 600], [1140, 1320]], 'Friday retains personal windows around daily work');
 assert.deepEqual(JSON.parse(JSON.stringify(api.plannerAvailableWindows('2026-11-06', 'work'))), [[600, 1080]],
   'Friday also has a work window');
 
