@@ -388,7 +388,7 @@ function numericCell(value, fallback = '') {
 const SHARED_SETTING_KEYS = [
   'rates', 'baseRates', 'rateHistory', 'recurringSchedules',
   'generatedOccurrences', 'financialGoals', 'incomeSources',
-  'budget', 'warn', 'accounts', 'prices'
+  'plannerRules', 'plannerActivities', 'budget', 'warn', 'accounts', 'prices'
 ];
 const SHARED_SETTING_COLLECTION_KEYS = {
   rateHistory: item => String(item && item.cur || '') + '|' + String(item && item.date || ''),
@@ -396,10 +396,11 @@ const SHARED_SETTING_COLLECTION_KEYS = {
   generatedOccurrences: item => String(item && item.key || ''),
   financialGoals: item => String(item && item.id || ''),
   incomeSources: item => String(item && item.id || ''),
+  plannerActivities: item => String(item && item.id || ''),
   accounts: item => String(item && item.code || ''),
   prices: item => String(item && item.code || '')
 };
-const SHARED_SETTING_OBJECT_KEYS = new Set(['rates', 'baseRates', 'budget']);
+const SHARED_SETTING_OBJECT_KEYS = new Set(['rates', 'baseRates', 'plannerRules', 'budget']);
 
 function sharedSettingsPayload(state = S) {
   const source = state && typeof state === 'object' ? state : {};
@@ -411,6 +412,8 @@ function sharedSettingsPayload(state = S) {
     generatedOccurrences: source.generatedOccurrences,
     financialGoals: source.financialGoals,
     incomeSources: source.incomeSources,
+    plannerRules: source.plannerRules,
+    plannerActivities: source.plannerActivities,
     budget: source.budget,
     warn: source.warn,
     accounts: source.accounts,
