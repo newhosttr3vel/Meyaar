@@ -59,6 +59,7 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(source + '\n' + routineSource + '\nplannerPrayerCache.set("2026-10-31", {Fajr:"05:00",Dhuhr:"12:00",Asr:"15:30",Maghrib:"18:00",Isha:"19:30"}); plannerPrayerCache.set("2026-11-06", {Fajr:"05:00",Dhuhr:"12:00",Asr:"15:30",Maghrib:"18:00",Isha:"19:30"});\nglobalThis.__plannerTest = {' +
   'plannerAvailableWindows: plannerAvailableWindows,' +
+  'setPrayerTimes: (date, times) => plannerPrayerCache.set(date, times),' +
   'plannerPrayerAndRoutinePanel: plannerPrayerAndRoutinePanel,' +
   'plannerCleanPrayerTime: plannerCleanPrayerTime,' +
   'plannerGenerateDay: plannerGenerateDay,' +
@@ -86,7 +87,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2
 assert.equal(S.plannerSettings.workEnd, '17:00',
   'Dynamic work-end calculation restores the shared setting after checking personal availability');
 S.plannerSettings.workEnd = configuredWorkEnd;
-plannerPrayerCache.set('2026-10-31', {Fajr:'05:00',Dhuhr:'12:00',Asr:'15:30',Maghrib:'17:33',Isha:'19:30'});
+api.setPrayerTimes('2026-10-31', {Fajr:'05:00',Dhuhr:'12:00',Asr:'15:30',Maghrib:'17:33',Isha:'19:30'});
 const eveningPersonalTask = {
   id: 'EVENING-PERSONAL', title: 'اطلس', date: '2026-10-31',
   startTime: '18:33', endTime: '21:11', area: 'personal'
