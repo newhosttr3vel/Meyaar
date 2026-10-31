@@ -303,6 +303,7 @@ for (const id of ['incomeSourceName', 'incomeSourceKind', 'incomeSourceFrequency
   assert.ok(html.includes('id="' + id + '"'), 'Income source form field ' + id + ' exists');
 }
 assert.match(source, /function vPlanner\(\)/, 'The daily and weekly planner view is wired');
+assert.ok(source.indexOf('const PLANNER_STATUS_LABELS') < source.lastIndexOf('render();'), 'App startup is deferred until planner constants are initialized');
 assert.doesNotMatch(source, /plannerTasks:\s*source\.plannerTasks/, 'Planner tasks do not ride in the shared financial settings payload');
 assert.match(source, /async function loadPlannerTasksFromGoogle/, 'Planner tasks load from the TASKS sheet endpoint');
 assert.match(source, /action: 'savetask'/, 'Planner edits use a single-task save endpoint');
