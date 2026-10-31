@@ -14,6 +14,7 @@ const sourceModules = [
   'js/modules/50-views-and-previews.js',
   'js/modules/60-actions-and-event-handlers.js',
   'js/modules/70-daily-weekly-planner.js',
+  'js/modules/75-routine-schedule.js',
   'js/modules/80-app-startup.js'
 ];
 
