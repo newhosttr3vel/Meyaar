@@ -27,6 +27,7 @@ globalThis.__financeTest = {
   INCOME_SOURCE_KINDS,
   INCOME_SOURCE_FREQUENCIES,
   seed,
+  normalizeState,
   sharedSettingsPayload,
   mergeSharedSettingsSnapshots,
   mergeLegacySharedSettingsSnapshots,
@@ -133,6 +134,40 @@ for (const field of [
   assert.equal(retainedTransaction[field], transactionContractFixture[field],
     'State normalization preserves transaction field: ' + field);
 }
+
+// Smart planner state: rules and recurring activity definitions are shared,
+// while the time-stamped task list stays in the dedicated TASKS worksheet.
+const plannerDefaults = api.normalizeState(makeState());
+assert.deepEqual(
+  JSON.parse(JSON.stringify(plannerDefaults.plannerRules)),
+  { sleepStart: '22:00', sleepEnd: '05:00', workStart: '10:00', workEnd: '19:00', workDays: [0, 1, 2, 3, 4, 6] },
+  'Planner defaults preserve the agreed sleep and work routine'
+);
+assert.deepEqual(JSON.parse(JSON.stringify(plannerDefaults.plannerActivities)), [],
+  'Recurring activities start empty and are added deliberately by the user');
+const overnightPlannerTask = {
+  id: 'TASK-OVERNIGHT', title: 'وردية ليلية', date: '2026-10-31',
+  startTime: '22:00', endTime: '05:00', category: 'عمل',
+  priority: 'عالية', status: 'partial', note: '', createdAt: '', updatedAt: ''
+};
+const plannerNormalized = api.normalizeState(makeState({ plannerTasks: [
+  overnightPlannerTask,
+  { ...overnightPlannerTask, id: 'TASK-POSTPONED', startTime: '07:00', endTime: '08:00', status: 'postponed' },
+  { ...overnightPlannerTask, id: 'TASK-MISSED', startTime: '08:00', endTime: '09:00', status: 'missed' }
+]}));
+assert.equal(plannerNormalized.plannerTasks.length, 3,
+  'Valid overnight and daytime tasks survive planner normalization');
+assert.equal(plannerNormalized.plannerTasks[0].status, 'partial',
+  'In-progress execution state is retained');
+assert.equal(plannerNormalized.plannerTasks[1].status, 'postponed',
+  'Postponed execution state is retained');
+assert.equal(plannerNormalized.plannerTasks[2].status, 'missed',
+  'Missed execution state is retained');
+const plannerShared = api.sharedSettingsPayload(plannerNormalized);
+assert.ok(plannerShared.plannerRules && Array.isArray(plannerShared.plannerActivities),
+  'Planner rules and recurring activities synchronize as shared settings');
+assert.equal(Object.prototype.hasOwnProperty.call(plannerShared, 'plannerTasks'), false,
+  'Actual planner tasks remain separate from shared settings');
 
 // Cross-device settings merge: concurrent independent additions and map edits must coexist.
 api.setState(makeState({
