@@ -192,7 +192,7 @@ function plannerFindSlot(date, area, duration, occupied, breakMinutes = 0) {
     let cursor = Math.ceil(window.start / 5) * 5;
     for (const block of allOccupied) {
       if (block.end <= cursor || block.start >= window.end) continue;
-      if (block.start - cursor >= duration) {
+      if (block.start - cursor >= duration + breakMinutes) {
         return { start: cursor, end: cursor + duration };
       }
       cursor = Math.max(cursor, block.end + breakMinutes);
@@ -789,7 +789,8 @@ async function plannerSaveSettings(form) {
   const start=plannerTimeMinutes(data.dayStart),end=plannerTimeMinutes(data.dayEnd);
   const sleepStart=plannerTimeMinutes(data.sleepStart),sleepEnd=plannerTimeMinutes(data.sleepEnd);
   const workStart=plannerTimeMinutes(data.workStart),workEnd=plannerTimeMinutes(data.workEnd);
-  if(end<=start||sleepStart<=sleepEnd||workEnd<=workStart||workStart<start||workEnd>end) {
+  if(end<=start||sleepStart<=sleepEnd||workEnd<=workStart||
+      workStart<Math.max(start,sleepEnd)||workEnd>Math.min(end,sleepStart)) {
     return showAppToast('ترتيب ساعات اليوم أو النوم أو العمل غير صحيح.',5000);
   }
   if(!days.length)return showAppToast('حدد يوم عمل واحدًا على الأقل.',4000);
@@ -930,6 +931,9 @@ document.addEventListener('click',async event=>{
     const task=(S.plannerTasks||[]).find(item=>item.id===start.dataset.plannerFocusStart);
     if(!task)return;
     const now=new Date().toISOString();
+    S.ui.plannerView='today';
+    S.ui.plannerDate=task.date||localISODate();
+    save();
     await persistPlannerTask({...task,status:'doing',startedAt:now,updatedAt:now},task.updatedAt,'بدأت جلسة التركيز.');
     return;
   }
