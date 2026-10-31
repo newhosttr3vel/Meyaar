@@ -140,7 +140,7 @@ function plannerDayOfWeek(date) {
   return new Date(date + 'T12:00:00').getDay();
 }
 
-function plannerAvailableWindows(date, area) {
+function plannerAvailableWindowsBase(date, area) {
   const rules = plannerRules();
   const configuredStart = plannerTimeMinutes(rules.dayStart);
   const configuredEnd = plannerTimeMinutes(rules.dayEnd);
@@ -316,7 +316,7 @@ function plannerFilteredTasks(tasks) {
   });
 }
 
-function plannerRenderTimeline(date, tasks, canEdit) {
+function plannerRenderTimelineBase(date, tasks, canEdit) {
   const scheduled = tasks.filter(task => task.date === date && plannerTaskHasSlot(task) && task.status !== 'archived')
     .sort((a, b) => plannerTimeMinutes(a.startTime) - plannerTimeMinutes(b.startTime));
   const blocks = ['personal', 'work'].map(area => {
@@ -572,7 +572,8 @@ function plannerDraftPanel() {
 }
 
 function vPlanner() {
-  const date=isValidISODate(S.ui.plannerDate)?S.ui.plannerDate:localISODate();
+  const date=isValidISODate(S.ui.plannerDate)?S.ui.plannerDate:(typeof plannerEgyptISODate==='function'?plannerEgyptISODate():localISODate());
+  if(typeof plannerEnsurePrayerTimes==='function')plannerEnsurePrayerTimes(date);
   const view=['today','inbox','backlog','week','projects','review'].includes(S.ui.plannerView)?S.ui.plannerView:'today';
   const tasks=Array.isArray(S.plannerTasks)?S.plannerTasks:[];
   const canEdit=plannerCanEdit();
