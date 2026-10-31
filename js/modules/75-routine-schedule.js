@@ -27,7 +27,7 @@ function plannerPrayerApiDate(date) {
 }
 
 function plannerCleanPrayerTime(value) {
-  const match = String(value || '').match(/(?:^|\\s)([01]?\\d|2[0-3]):([0-5]\\d)(?:\\s|$)/);
+  const match = String(value || '').match(/(?:^|\s)([01]?\d|2[0-3]):([0-5]\d)(?:\s|$)/);
   return match ? String(match[1]).padStart(2, '0') + ':' + match[2] : '';
 }
 
