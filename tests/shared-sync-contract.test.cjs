@@ -92,6 +92,21 @@ assert.match(plannerModule, /action: 'deletetask'/,
   'The planner deletes single tasks through the dedicated endpoint');
 assert.match(appsScript, /supportedKeys: CONFIG\.SHARED_STATE_KEYS\.slice\(\)/,
   'The shared-settings API continues to advertise its supported collections for compatibility');
+assert.match(domainModule, /plannerRules:\s*source\.plannerRules/,
+  'Fixed planner rules are synchronized independently of task rows');
+assert.match(domainModule, /plannerActivities:\s*source\.plannerActivities/,
+  'Recurring activity definitions are part of shared settings');
+assert.match(appsScript, /plannerRules/,
+  'The Apps Script contract accepts planner rules');
+assert.match(appsScript, /plannerActivities/,
+  'The Apps Script contract accepts recurring planner activities');
+assert.match(appsScript, /\['todo', 'partial', 'done', 'postponed', 'missed'\]/,
+  'The TASKS endpoint preserves all planner execution states');
+assert.match(plannerModule, /function plannerGenerateWeek\(/,
+  'The planner includes an automatic weekly scheduling engine');
+assert.match(plannerModule, /function plannerTaskConflicts\(/,
+  'Planner conflicts are checked before a task is accepted');
+
 assert.match(domainModule, /incomeSources:\s*source\.incomeSources/,
   'Income sources are part of the shared settings payload');
 assert.match(domainModule, /function mergeSharedSettingsSnapshots\(/,
