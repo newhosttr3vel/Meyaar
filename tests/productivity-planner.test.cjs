@@ -27,7 +27,7 @@ const sandbox = {
       dayStart: '05:00', dayEnd: '22:00',
       sleepStart: '22:00', sleepEnd: '05:00',
       workStart: '10:00', workEnd: '19:00',
-      workDays: [0, 1, 2, 3, 4, 6], breakMinutes: 10, targetLoad: 85
+      workDays: [0, 1, 2, 3, 4, 5, 6], breakMinutes: 10, targetLoad: 85
     },
     plannerTasks: [],
     ui: { tab: 'dash' }
@@ -74,8 +74,8 @@ assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2
   [[600, 1140]], 'Saturday work availability is 10:00–19:00');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-11-06', 'personal')))),
   [[300, 1320]], 'Friday is open for personal tasks from 05:00 to 22:00');
-assert.deepEqual(JSON.parse(JSON.stringify(api.plannerAvailableWindows('2026-11-06', 'work'))), [],
-  'Friday has no fixed work window');
+assert.deepEqual(JSON.parse(JSON.stringify(api.plannerAvailableWindows('2026-11-06', 'work'))), [[600, 1140]],
+  'Friday also has a work window');
 
 const urgent = { priority: 'عاجل', impact: 5, estimateMinutes: 45, dueDate: '2026-10-31', createdAt: '2026-10-30' };
 const low = { priority: 'منخفضة', impact: 1, estimateMinutes: 60, dueDate: '2026-11-20', createdAt: '2026-10-30' };
