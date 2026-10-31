@@ -619,7 +619,7 @@ async function loadPlannerTasksFromGoogle({renderAfter=true,manual=false}={}) {
     const localOnly=(S.plannerTasks||[]).filter(task=>task&&task.id&&!remoteIds.has(String(task.id))&&!deleted.has(String(task.id))&&!baselineIds.has(String(task.id)));
     for(const task of localOnly) {
       try {
-        const saved=await postGooglePayload({action:'savetask',task,expectedUpdatedAt:''});
+        const saved=await postGooglePayload({action: 'savetask',task,expectedUpdatedAt:''});
         if(saved&&saved.task)remote.push(saved.task);
       } catch(error) {
         console.warn('تعذر نقل مهمة محلية إلى TASKS:',error);
@@ -655,7 +655,7 @@ async function persistPlannerTask(task,expectedUpdatedAt='',successMessage='تم
   plannerSaveInFlight=true;
   render();
   try {
-    const result=await postGooglePayload({action:'savetask',task,expectedUpdatedAt:String(expectedUpdatedAt||'')});
+    const result=await postGooglePayload({action: 'savetask',task,expectedUpdatedAt:String(expectedUpdatedAt||'')});
     if(!result||result.success===false||!result.task)throw new Error((result&&(result.message||result.error))||'لم تؤكد Google حفظ المهمة');
     const normalized=normalizeState({...S,plannerTasks:[...(S.plannerTasks||[]).filter(item=>item.id!==result.task.id),result.task]}).plannerTasks;
     S.plannerTasks=normalized;
@@ -682,7 +682,7 @@ async function persistPlannerTaskDeletion(task) {
   plannerSaveInFlight=true;
   render();
   try {
-    const result=await postGooglePayload({action:'deletetask',id:task.id,expectedUpdatedAt:String(task.updatedAt||'')});
+    const result=await postGooglePayload({action: 'deletetask',id:task.id,expectedUpdatedAt:String(task.updatedAt||'')});
     if(!result||result.success===false)throw new Error((result&&(result.message||result.error))||'لم تؤكد Google الحذف');
     S.plannerTasks=(S.plannerTasks||[]).filter(item=>item.id!==task.id);
     plannerDeletedIds.add(String(task.id));
@@ -756,7 +756,7 @@ async function plannerApplyScheduleDraft() {
       const payloadTask={...task};
       delete payloadTask.updatedAtBefore;
       const result=await postGooglePayload({
-        action:'savetask',
+        action: 'savetask',
         task:payloadTask,
         expectedUpdatedAt:String(task.updatedAtBefore||'')
       });
