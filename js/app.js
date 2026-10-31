@@ -4153,7 +4153,18 @@ function plannerGenerateWeek(weekDates) {
       !activity.daysOfWeek || !activity.daysOfWeek.length ||
       activity.daysOfWeek.includes(plannerDayOfWeek(date))
     );
-    const count = Math.min(Number(activity.sessionsPerWeek) || 1, eligible.length);
+    const requested = Number(activity.sessionsPerWeek) || 1;
+    if (!eligible.length) {
+      unplaced.push({ title: activity.title, reason: 'لا توجد أيام محددة مناسبة لهذا النشاط.' });
+      return;
+    }
+    if (requested > eligible.length) {
+      unplaced.push({
+        title: activity.title,
+        reason: 'طلبت ' + requested + ' جلسات لكن اخترت ' + eligible.length + ' أيام فقط؛ يمكن وضع جلسة واحدة كحد أقصى في اليوم.'
+      });
+    }
+    const count = Math.min(requested, eligible.length);
     for (let index = 0; index < count; index++) {
       const selectedIndex = count === 1 ? Math.floor((eligible.length - 1) / 2) :
         Math.min(eligible.length - 1, Math.floor((index * (eligible.length - 1)) / (count - 1)));
@@ -4201,7 +4212,13 @@ function plannerGenerateWeek(weekDates) {
       updatedAt: now
     };
     suggestions.push(task);
-    dayOccupied.push({ date: request.date, start: slot.start, end: slot.end });
+    // Keep a short recovery gap after each generated session instead of packing
+    // activities back-to-back. The task itself retains its real duration.
+    dayOccupied.push({
+      date: request.date,
+      start: slot.start,
+      end: Math.min(slot.end + 15, 1439)
+    });
     occupied.set(request.date, dayOccupied);
   });
   return { tasks: suggestions, unplaced, generatedAt: new Date().toISOString() };
@@ -4289,6 +4306,10 @@ function plannerValidateRules(data) {
   }
   if (plannerTimeMinutes(data.workStart) >= plannerTimeMinutes(data.workEnd)) {
     return 'بداية العمل يجب أن تسبق نهايته في نفس اليوم.';
+  }
+  if (plannerTimeMinutes(data.workStart) < plannerTimeMinutes(data.sleepEnd) ||
+      plannerTimeMinutes(data.workEnd) > plannerTimeMinutes(data.sleepStart)) {
+    return 'مواعيد العمل يجب أن تقع بالكامل بين الاستيقاظ وبداية النوم حتى لا تتعارض القواعد الثابتة.';
   }
   if (!data.workDays.length) return 'حدد يوم عمل واحدًا على الأقل، أو اترك الجدول الحالي كما هو.';
   return '';
