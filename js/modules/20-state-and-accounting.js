@@ -14,6 +14,14 @@ function seed() {
     pendingFinancialGoalIds: [],
     incomeSources: [],
     plannerTasks: [],
+    plannerRules: {
+      sleepStart: '22:00',
+      sleepEnd: '05:00',
+      workStart: '10:00',
+      workEnd: '19:00',
+      workDays: [0, 1, 2, 3, 4, 6]
+    },
+    plannerActivities: [],
     budget: { الأساسيات: 0.5, الرغبات: 0.15, الادخار: 0.15, الاستثمارات: 0.1, الصدقات: 0.05, الطوارئ: 0.05 },
     warn: 0.9,
     accounts: [
@@ -182,6 +190,51 @@ function normalizeState(input) {
     })
     .filter(item => item.name);
 
+  const rawPlannerRules = obj(input.plannerRules);
+  const validPlannerTime = value => /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || ''));
+  const sleepStart = validPlannerTime(rawPlannerRules.sleepStart) ? String(rawPlannerRules.sleepStart) : base.plannerRules.sleepStart;
+  const sleepEnd = validPlannerTime(rawPlannerRules.sleepEnd) ? String(rawPlannerRules.sleepEnd) : base.plannerRules.sleepEnd;
+  const workStart = validPlannerTime(rawPlannerRules.workStart) ? String(rawPlannerRules.workStart) : base.plannerRules.workStart;
+  const workEnd = validPlannerTime(rawPlannerRules.workEnd) ? String(rawPlannerRules.workEnd) : base.plannerRules.workEnd;
+  const timeMinutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3, 5));
+  const validSleepPair = timeMinutes(sleepStart) > timeMinutes(sleepEnd);
+  const validWorkPair = timeMinutes(workStart) < timeMinutes(workEnd);
+  const workDays = Array.isArray(rawPlannerRules.workDays)
+    ? [...new Set(rawPlannerRules.workDays.map(Number).filter(day => Number.isInteger(day) && day >= 0 && day <= 6))]
+    : base.plannerRules.workDays.slice();
+  out.plannerRules = {
+    sleepStart: validSleepPair ? sleepStart : base.plannerRules.sleepStart,
+    sleepEnd: validSleepPair ? sleepEnd : base.plannerRules.sleepEnd,
+    workStart: validWorkPair ? workStart : base.plannerRules.workStart,
+    workEnd: validWorkPair ? workEnd : base.plannerRules.workEnd,
+    workDays
+  };
+
+  const plannerActivityIds = new Set();
+  out.plannerActivities = (Array.isArray(input.plannerActivities) ? input.plannerActivities : [])
+    .filter(item => {
+      if (!item || typeof item !== 'object') return false;
+      const id = String(item.id || '').trim();
+      if (!id || plannerActivityIds.has(id)) return false;
+      plannerActivityIds.add(id);
+      return true;
+    })
+    .map(item => ({
+      id: String(item.id),
+      title: String(item.title || '').trim().slice(0, 100),
+      category: ['القرآن', 'القراءة', 'التعلم', 'الجيم', 'الصلاة', 'الأكل', 'الراحة', 'عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'].includes(item.category) ? item.category : 'شخصي',
+      durationMinutes: Math.max(15, Math.min(360, Math.round((Number(item.durationMinutes) || 45) / 15) * 15)),
+      sessionsPerWeek: Math.max(1, Math.min(7, Math.trunc(Number(item.sessionsPerWeek) || 1))),
+      preferredPeriod: ['morning', 'evening', 'any'].includes(item.preferredPeriod) ? item.preferredPeriod : 'any',
+      priority: ['عالية', 'متوسطة', 'منخفضة'].includes(item.priority) ? item.priority : 'متوسطة',
+      daysOfWeek: Array.isArray(item.daysOfWeek)
+        ? [...new Set(item.daysOfWeek.map(Number).filter(day => Number.isInteger(day) && day >= 0 && day <= 6))]
+        : [0, 1, 2, 3, 4, 5, 6],
+      active: item.active !== false,
+      createdAt: String(item.createdAt || '')
+    }))
+    .filter(item => item.title);
+
   const plannerTaskIds = new Set();
   out.plannerTasks = (Array.isArray(input.plannerTasks) ? input.plannerTasks : [])
     .filter(item => {
@@ -195,8 +248,8 @@ function normalizeState(input) {
       id: String(item.id),
       title: String(item.title || '').trim().slice(0, 120),
       date: isValidISODate(item.date) ? item.date : localISODate(),
-      startTime: /^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(item.startTime || '')) ? String(item.startTime) : '09:00',
-      endTime: /^([01]\\d|2[0-3]):[0-5]\\d$/.test(String(item.endTime || '')) ? String(item.endTime) : '10:00',
+      startTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(item.startTime || '')) ? String(item.startTime) : '09:00',
+      endTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(item.endTime || '')) ? String(item.endTime) : '10:00',
       category: ['القرآن', 'القراءة', 'التعلم', 'الجيم', 'الصلاة', 'الأكل', 'الراحة', 'عمل', 'تعلم', 'صحة', 'شخصي', 'عائلة', 'راحة', 'أخرى'].includes(item.category) ? item.category : 'شخصي',
       priority: ['عالية', 'متوسطة', 'منخفضة'].includes(item.priority) ? item.priority : 'متوسطة',
       status: ['todo', 'done'].includes(item.status) ? item.status : 'todo',
@@ -204,7 +257,7 @@ function normalizeState(input) {
       createdAt: String(item.createdAt || ''),
       updatedAt: String(item.updatedAt || '')
     }))
-    .filter(item => item.title && item.endTime > item.startTime);
+    .filter(item => item.title && item.startTime !== item.endTime);
 
   out.budget = { ...base.budget, ...obj(input.budget) };
   CATS.forEach(cat => {
