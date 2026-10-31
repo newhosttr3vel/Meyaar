@@ -535,26 +535,26 @@ function normalizePlannerTask(input) {
   const actual = Number(input.actualMinutes);
   const impact = Number(input.impact);
   const note = String(input.note || '').trim().slice(0, 500);
-  const scheduled = Boolean(startTime || endTime || date);
+  const hasTimeSlot = Boolean(startTime || endTime);
 
   if (!id) throw new Error('Task ID is required.');
   if (!title) throw new Error('Task title is required.');
   if (date && !isValidPlannerDate(date)) throw new Error('Scheduled date must be a valid YYYY-MM-DD date.');
   if (dueDate && !isValidPlannerDate(dueDate)) throw new Error('Due date must be a valid YYYY-MM-DD date.');
-  if (scheduled) {
+  if (hasTimeSlot) {
     if (!date || !validTime(startTime) || !validTime(endTime) || startTime === endTime) {
       throw new Error('A scheduled task requires a valid date, start time and end time.');
     }
   }
-  if (status === 'scheduled' && !scheduled) {
+  if (status === 'scheduled' && !hasTimeSlot) {
     throw new Error('A scheduled task must have a date and a time slot.');
   }
 
   return {
     id,
     date: date && isValidPlannerDate(date) ? date : '',
-    startTime: scheduled ? startTime : '',
-    endTime: scheduled ? endTime : '',
+    startTime: hasTimeSlot ? startTime : '',
+    endTime: hasTimeSlot ? endTime : '',
     title,
     category: String(input.category || 'أخرى').trim().slice(0, 60),
     priority,
