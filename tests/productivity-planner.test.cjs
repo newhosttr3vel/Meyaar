@@ -70,16 +70,16 @@ vm.runInContext(source + '\n' + routineSource + '\nplannerPrayerCache.set("2026-
   '};', sandbox, { filename: 'productivity-planner.js' });
 const api = sandbox.__plannerTest;
 assert.equal(api.plannerCleanPrayerTime('18:04 (EET)'), '18:04', 'Prayer times are normalized from API timezone suffixes');
-assert.ok(api.plannerPrayerAndRoutinePanel('2026-10-31').includes('10:00 ص – 18:00'), 'Work ends at the Maghrib time returned for the selected date');
+assert.ok(api.plannerPrayerAndRoutinePanel('2026-10-31').includes('10:00 ص – 19:00'), 'Work ends at the Maghrib time returned for the selected date');
 assert.ok(api.plannerPrayerAndRoutinePanel('2026-10-31').includes('كل الأيام عدا الجمعة'), 'Sleep routine is marked off on Friday');
 const S = sandbox.S;
 const ranges = windows => windows.map(window => [window.start, window.end]);
 
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'personal')))),
-  [[300, 600], [1080, 1320]],
+  [[300, 600], [1140, 1320]],
   'Saturday personal availability is 05:00–10:00 and 18:00–22:00');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'work')))),
-  [[600, 1080]], 'Saturday work availability is 10:00 until Maghrib');
+  [[600, 1140]], 'Saturday work availability is 10:00 until Maghrib');
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-11-06', 'personal')))),
   [[300, 600], [1080, 1320]], 'Friday retains personal windows around daily work');
 assert.deepEqual(JSON.parse(JSON.stringify(api.plannerAvailableWindows('2026-11-06', 'work'))), [[600, 1080]],
@@ -102,7 +102,7 @@ const workTask = draft.tasks.find(task => task.id === 'W1');
 assert.ok(workTask.startTime >= '10:00' && workTask.endTime <= '18:00',
   'Work tasks are scheduled only inside work hours');
 assert.ok(draft.tasks.filter(task => task.area === 'personal').every(task =>
-  task.endTime <= '10:00' || task.startTime >= '18:00'),
+  task.endTime <= '10:00' || task.startTime >= '19:00'),
   'Personal tasks are scheduled outside fixed work hours');
 for (let i = 0; i < draft.tasks.length; i++) {
   for (let j = i + 1; j < draft.tasks.length; j++) {
@@ -153,7 +153,7 @@ assert.deepEqual(JSON.parse(JSON.stringify(api.plannerTaskSegments(overnight).ma
 S.plannerSettings.sleepEnd = '06:00';
 S.plannerSettings.sleepStart = '21:00';
 assert.deepEqual(JSON.parse(JSON.stringify(ranges(api.plannerAvailableWindows('2026-10-31', 'personal')))),
-  [[360, 600], [1080, 1260]], 'Custom sleep boundaries update personal availability');
+  [[360, 600], [1140, 1260]], 'Custom sleep boundaries update personal availability');
 
 (async function testQueuedRenderAfterInitialPlannerLoad() {
   let releaseFetch;
