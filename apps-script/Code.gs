@@ -57,7 +57,7 @@ const CONFIG = {
   SHARED_STATE_KEYS: [
     'rates', 'baseRates', 'rateHistory', 'recurringSchedules',
     'generatedOccurrences', 'financialGoals', 'incomeSources', 'plannerTasks', 'plannerSettings',
-    'budget', 'warn', 'accounts', 'prices'
+    'budget', 'warn', 'accounts', 'prices', 'actions'
   ],
   COLLECTION_KEY_PARTS: {
     rateHistory: ['cur', 'date'],
@@ -67,7 +67,8 @@ const CONFIG = {
     incomeSources: ['id'],
     plannerTasks: ['id'],
     accounts: ['code'],
-    prices: ['code']
+    prices: ['code'],
+    actions: ['id']
   },
   OBJECT_MAP_KEYS: ['rates', 'baseRates', 'plannerSettings', 'budget']
 };
