@@ -118,5 +118,11 @@ assert.match(domainModule, /function mergeSharedSettingsSnapshots\(/,
   'Shared collections have a three-way merge helper');
 assert.match(domainModule, /'accounts', 'prices'/,
   'Account and asset-price data are included in shared settings');
+assert.match(domainModule, /actions:\s*source\.actions/,
+  'ACTIONS records are included in the shared settings payload');
+assert.match(appsScript, /actions:\s*\['id'\]/,
+  'ACTIONS records merge across devices by stable ID');
+assert.match(indexHtml, /data-tab="actions"/,
+  'The standalone ACTIONS section is reachable from the navigation');
 
 console.log('Shared-sync contract tests passed: separate settings sheet, stable transaction schema, and cross-device merge routes.');
