@@ -13,6 +13,7 @@ function seed() {
     financialGoals: [],
     pendingFinancialGoalIds: [],
     incomeSources: [],
+    actions: [],
     plannerTasks: [],
     plannerSettings: {
       dayStart: '05:00', dayEnd: '22:00',
@@ -40,7 +41,7 @@ function normalizeState(input) {
   const obj = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const out = { ...base, ...input };
   out.ui = { ...base.ui, ...obj(input.ui) };
-  if (!['dash', 'tx', 'income', 'acc', 'ast', 'set', 'aud', 'rec', 'goal', 'plan'].includes(out.ui.tab)) out.ui.tab = 'dash';
+  if (!['dash', 'tx', 'income', 'acc', 'ast', 'set', 'aud', 'rec', 'goal', 'plan', 'actions'].includes(out.ui.tab)) out.ui.tab = 'dash';
   out.ui.plannerDate = isValidISODate(out.ui.plannerDate) ? out.ui.plannerDate : localISODate();
   out.ui.plannerView = ['today', 'inbox', 'backlog', 'week', 'projects', 'review'].includes(out.ui.plannerView) ? out.ui.plannerView : 'today';
   out.ui.y = Number.isInteger(Number(out.ui.y)) && Number(out.ui.y) >= 1900 && Number(out.ui.y) <= 2200 ? Number(out.ui.y) : base.ui.y;
@@ -189,6 +190,30 @@ function normalizeState(input) {
       };
     })
     .filter(item => item.name);
+
+  const actionIds = new Set();
+  out.actions = (Array.isArray(input.actions) ? input.actions : [])
+    .filter(item => {
+      if (!item || typeof item !== 'object') return false;
+      const id = String(item.id || '').trim();
+      if (!id || actionIds.has(id)) return false;
+      actionIds.add(id);
+      return true;
+    })
+    .map(item => ({
+      id: String(item.id),
+      kind: item.kind === 'diary' ? 'diary' : 'event',
+      title: String(item.title || '').trim().slice(0, 120),
+      date: isValidISODate(normalizeGoogleDate(item.date)) ? normalizeGoogleDate(item.date) : localISODate(),
+      category: String(item.category || (item.kind === 'diary' ? 'خواطر' : 'أخرى')).trim().slice(0, 60),
+      details: String(item.details || '').trim().slice(0, 10000),
+      people: String(item.people || '').trim().slice(0, 300),
+      place: String(item.place || '').trim().slice(0, 160),
+      createdAt: String(item.createdAt || ''),
+      updatedAt: String(item.updatedAt || ''),
+      deletedAt: String(item.deletedAt || '')
+    }))
+    .filter(item => item.details || item.title);
 
   const settings = obj(input.plannerSettings);
   const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;

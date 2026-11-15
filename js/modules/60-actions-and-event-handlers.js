@@ -809,7 +809,7 @@ if (mainNav) {
     event.stopPropagation();
 
     const nextTab = String(tab.dataset.tab || '');
-    if (!['dash', 'tx', 'income', 'plan', 'rec', 'goal', 'acc', 'ast', 'set', 'aud'].includes(nextTab)) return;
+    if (!['dash', 'tx', 'income', 'plan', 'rec', 'goal', 'acc', 'ast', 'set', 'aud', 'actions'].includes(nextTab)) return;
 
     setSidebarOpen(false);
     S.ui.tab = nextTab;
@@ -1023,3 +1023,100 @@ document.addEventListener('input', e => {
   if (e.target.closest('#formTransfer')) updateTransferPreview();
   if (e.target.closest('#formGoal')) updateGoalPlanPreview();
 });
+
+
+let editingActionId = '';
+let actionsDraftKind = 'event';
+let actionSaveInFlight = false;
+
+function actionEntryId() {
+  return 'ACT-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 9).toUpperCase();
+}
+
+document.addEventListener('click', event => {
+  const kindButton = event.target.closest('[data-action-kind]');
+  if (kindButton) {
+    actionsDraftKind = kindButton.dataset.actionKind === 'diary' ? 'diary' : 'event';
+    editingActionId = '';
+    render();
+    return;
+  }
+  const editButton = event.target.closest('[data-action-edit]');
+  if (editButton) {
+    editingActionId = String(editButton.dataset.actionEdit || '');
+    const entry = (S.actions || []).find(item => item.id === editingActionId && !item.deletedAt);
+    if (!entry) { showAppToast('لم أجد التسجيل المطلوب.', 3500); return; }
+    actionsDraftKind = entry.kind;
+    render();
+    $('#formAction')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  if (event.target.closest('[data-action-cancel]')) {
+    editingActionId = '';
+    actionsDraftKind = 'event';
+    render();
+    return;
+  }
+  const deleteButton = event.target.closest('[data-action-delete]');
+  if (deleteButton) {
+    const id = String(deleteButton.dataset.actionDelete || '');
+    const entry = (S.actions || []).find(item => item.id === id && !item.deletedAt);
+    if (!entry || !confirm('هل تريد حذف هذا التسجيل؟ سيختفي من أجهزتك بعد المزامنة.')) return;
+    const now = new Date().toISOString();
+    S.actions = S.actions.map(item => item.id === id ? { ...item, deletedAt: now, updatedAt: now } : item);
+    save();
+    if (editingActionId === id) editingActionId = '';
+    render();
+    if (cloudSettingsInitialized) saveSharedSettingsToGoogle().then(ok => showAppToast(ok ? 'تم حذف التسجيل ومزامنته.' : 'تم الحذف محليًا، لكن تعذرت المزامنة الآن.', 4500));
+    else showAppToast('تم الحذف على هذا الجهاز. فعّل المزامنة من الإعدادات لنقله إلى أجهزتك الأخرى.', 5500);
+  }
+});
+
+document.addEventListener('submit', async event => {
+  if (event.target.id !== 'formAction') return;
+  event.preventDefault();
+  if (actionSaveInFlight) return;
+  const form = event.target;
+  const data = Object.fromEntries(new FormData(form));
+  const id = String(data.id || '');
+  const kind = data.kind === 'diary' ? 'diary' : 'event';
+  const title = String(data.title || '').trim();
+  const details = String(data.details || '').trim();
+  const date = String(data.date || '');
+  if (kind === 'event' && !title) { alert('اكتب عنوان الحدث.'); return; }
+  if (!details) { alert('اكتب تفاصيل التسجيل.'); return; }
+  if (!isValidISODate(date)) { alert('اختار تاريخًا صحيحًا.'); return; }
+  const previous = id ? (S.actions || []).find(item => item.id === id && !item.deletedAt) : null;
+  if (id && !previous) { alert('التسجيل غير موجود أو تم حذفه. حدّث الصفحة وحاول مرة أخرى.'); return; }
+  const now = new Date().toISOString();
+  const entry = {
+    id: previous ? previous.id : actionEntryId(),
+    kind, title: title.slice(0, 120), date,
+    category: String(data.category || (kind === 'diary' ? 'خواطر' : 'أخرى')).slice(0, 60),
+    details: details.slice(0, 10000),
+    people: kind === 'event' ? String(data.people || '').trim().slice(0, 300) : '',
+    place: kind === 'event' ? String(data.place || '').trim().slice(0, 160) : '',
+    createdAt: previous ? previous.createdAt : now,
+    updatedAt: now,
+    deletedAt: ''
+  };
+  actionSaveInFlight = true;
+  try {
+    S.actions = previous
+      ? S.actions.map(item => item.id === previous.id ? entry : item)
+      : [...(S.actions || []), entry];
+    save();
+    editingActionId = '';
+    actionsDraftKind = kind;
+    render();
+    if (cloudSettingsInitialized) {
+      const synced = await saveSharedSettingsToGoogle();
+      showAppToast(synced ? 'تم حفظ التسجيل ومزامنته بين أجهزتك.' : 'تم حفظ التسجيل على هذا الجهاز، وستتم محاولة المزامنة لاحقًا.', 5000);
+    } else {
+      showAppToast('تم حفظ التسجيل على هذا الجهاز. افتح الإعدادات وفعّل مزامنة هذا الجهاز لظهوره على بقية أجهزتك.', 6500);
+    }
+  } finally {
+    actionSaveInFlight = false;
+  }
+});
+

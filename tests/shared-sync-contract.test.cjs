@@ -10,6 +10,7 @@ const appsScript = fs.readFileSync(path.join(root, 'apps-script', 'Code.gs'), 'u
 const syncModule = fs.readFileSync(path.join(root, 'js', 'modules', '10-google-sheets-sync.js'), 'utf8');
 const domainModule = fs.readFileSync(path.join(root, 'js', 'modules', '00-domain-foundation.js'), 'utf8');
 const plannerModule = fs.readFileSync(path.join(root, 'js', 'modules', '70-daily-weekly-planner.js'), 'utf8');
+const indexHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
 assert.doesNotThrow(() => new vm.Script(appsScript, { filename: 'apps-script/Code.gs' }),
   'Apps Script must remain syntactically valid');
@@ -118,5 +119,11 @@ assert.match(domainModule, /function mergeSharedSettingsSnapshots\(/,
   'Shared collections have a three-way merge helper');
 assert.match(domainModule, /'accounts', 'prices'/,
   'Account and asset-price data are included in shared settings');
+assert.match(domainModule, /actions:\s*source\.actions/,
+  'ACTIONS records are included in the shared settings payload');
+assert.match(appsScript, /actions:\s*\['id'\]/,
+  'ACTIONS records merge across devices by stable ID');
+assert.match(indexHtml, /data-tab="actions"/,
+  'The standalone ACTIONS section is reachable from the navigation');
 
 console.log('Shared-sync contract tests passed: separate settings sheet, stable transaction schema, and cross-device merge routes.');
