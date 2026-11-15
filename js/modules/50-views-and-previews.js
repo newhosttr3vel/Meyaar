@@ -566,8 +566,9 @@ function vActions() {
   const diary = entries.filter(item => item.kind === 'diary');
   const editing = entries.find(item => String(item.id) === String(editingActionId)) || null;
   const categories = ['شخصي', 'عائلي', 'عمل', 'سفر', 'إنجاز', 'تعليم', 'صحة', 'خواطر', 'أخرى'];
+  const selectedCategory = editing ? editing.category : (kind === 'diary' ? 'خواطر' : 'شخصي');
   const categoryOptions = categories.map(value => '<option value="' + esc(value) + '"' +
-    (editing && editing.category === value ? ' selected' : '') + '>' + esc(value) + '</option>').join('');
+    (selectedCategory === value ? ' selected' : '') + '>' + esc(value) + '</option>').join('');
   const kind = editing ? editing.kind : (actionsDraftKind || 'event');
   const cards = entries.length ? entries.map(item => {
     const isDiary = item.kind === 'diary';
@@ -597,8 +598,8 @@ function vActions() {
     '<div class="row g-3"><div class="col-12 col-md-8"><label class="form-label">' + (kind === 'diary' ? 'عنوان اختياري' : 'عنوان الحدث') + '</label><input class="form-control" name="title" maxlength="120" ' + (kind === 'event' ? 'required' : '') + ' value="' + esc(editing ? editing.title : '') + '" placeholder="' + (kind === 'diary' ? 'مثلاً: فكرة عايز أرجعلها' : 'مثلاً: أول يوم في شغلي الجديد') + '"></div>' +
     '<div class="col-12 col-md-4"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" required value="' + esc(editing ? editing.date : localISODate()) + '"></div>' +
     '<div class="col-12 col-md-4"><label class="form-label">التصنيف</label><select class="form-select" name="category">' + categoryOptions + (editing && !categories.includes(editing.category) ? '<option selected value="' + esc(editing.category) + '">' + esc(editing.category) + '</option>' : '') + '</select></div>' +
-    '<div class="col-12 col-md-4 action-event-only"><label class="form-label">الأشخاص <span class="note">(اختياري)</span></label><input class="form-control" name="people" maxlength="300" value="' + esc(editing ? editing.people : '') + '" placeholder="مين كان موجود؟"></div>' +
-    '<div class="col-12 col-md-4 action-event-only"><label class="form-label">المكان <span class="note">(اختياري)</span></label><input class="form-control" name="place" maxlength="160" value="' + esc(editing ? editing.place : '') + '" placeholder="أين حدث ذلك؟"></div>' +
+    (kind === 'event' ? '<div class="col-12 col-md-4"><label class="form-label">الأشخاص <span class="note">(اختياري)</span></label><input class="form-control" name="people" maxlength="300" value="' + esc(editing ? editing.people : '') + '" placeholder="مين كان موجود؟"></div>' +
+    '<div class="col-12 col-md-4"><label class="form-label">المكان <span class="note">(اختياري)</span></label><input class="form-control" name="place" maxlength="160" value="' + esc(editing ? editing.place : '') + '" placeholder="أين حدث ذلك؟"></div>' : '') +
     '<div class="col-12"><label class="form-label">' + (kind === 'diary' ? 'اكتب يومياتك وأفكارك' : 'تفاصيل الحدث') + '</label><textarea class="form-control" name="details" rows="5" maxlength="10000" required placeholder="' + (kind === 'diary' ? 'اكتب اللي في بالك براحتك...' : 'احكي تفاصيل الحدث واللي تحب تفتكره...') + '">' + esc(editing ? editing.details : '') + '</textarea></div></div>' +
     '<div class="actions-form-footer"><span class="note">الحفظ تلقائي على الجهاز ثم المزامنة مع Google Sheets.</span><div><button type="button" class="btn btn-light" data-action-cancel ' + (editing ? '' : 'hidden') + '>إلغاء التعديل</button> <button type="submit" class="btn btn-primary"><i class="bi bi-cloud-arrow-up"></i> ' + (editing ? 'حفظ التعديلات' : 'حفظ التسجيل') + '</button></div></div></form></div>' +
     '<div class="actions-list-heading"><div><h3>سجلّك الشخصي</h3><p>الأحدث أولًا · ' + entries.length + ' تسجيل</p></div></div><div class="actions-entry-list">' + cards + '</div></section>';
