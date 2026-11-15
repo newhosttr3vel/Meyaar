@@ -10,6 +10,7 @@ const appsScript = fs.readFileSync(path.join(root, 'apps-script', 'Code.gs'), 'u
 const syncModule = fs.readFileSync(path.join(root, 'js', 'modules', '10-google-sheets-sync.js'), 'utf8');
 const domainModule = fs.readFileSync(path.join(root, 'js', 'modules', '00-domain-foundation.js'), 'utf8');
 const plannerModule = fs.readFileSync(path.join(root, 'js', 'modules', '70-daily-weekly-planner.js'), 'utf8');
+const indexHtml = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
 assert.doesNotThrow(() => new vm.Script(appsScript, { filename: 'apps-script/Code.gs' }),
   'Apps Script must remain syntactically valid');
