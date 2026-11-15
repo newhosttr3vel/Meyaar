@@ -558,11 +558,57 @@ function vAud(c) {
   <div class="box"><div class="table-responsive"><table class="table table-hover mb-0"><thead><tr><th>الفحص</th><th>القيمة</th><th>الحالة</th><th>الإجراء</th></tr></thead><tbody>${L.map(l => `<tr><td>${l[0]}</td><td>${l[1]}</td><td>${l[1] === 0 ? bd('سليم') : bd(l[2])}</td><td class="note">${l[1] === 0 ? '—' : l[3]}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
+
+function vActions() {
+  const entries = (S.actions || []).filter(item => !item.deletedAt)
+    .sort((a, b) => b.date.localeCompare(a.date) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  const events = entries.filter(item => item.kind === 'event');
+  const diary = entries.filter(item => item.kind === 'diary');
+  const editing = entries.find(item => String(item.id) === String(editingActionId)) || null;
+  const categories = ['شخصي', 'عائلي', 'عمل', 'سفر', 'إنجاز', 'تعليم', 'صحة', 'خواطر', 'أخرى'];
+  const categoryOptions = categories.map(value => '<option value="' + esc(value) + '"' +
+    (editing && editing.category === value ? ' selected' : '') + '>' + esc(value) + '</option>').join('');
+  const kind = editing ? editing.kind : (actionsDraftKind || 'event');
+  const cards = entries.length ? entries.map(item => {
+    const isDiary = item.kind === 'diary';
+    return '<article class="action-entry ' + (isDiary ? 'is-diary' : 'is-event') + '">' +
+      '<div class="action-entry-top"><span class="action-entry-kind"><i class="bi ' +
+      (isDiary ? 'bi-journal-text' : 'bi-calendar-event') + '"></i> ' +
+      (isDiary ? 'يومياتي' : 'حدث مهم') + '</span><time>' + esc(item.date) + '</time></div>' +
+      (item.title ? '<h3>' + esc(item.title) + '</h3>' : '') +
+      '<p class="action-entry-details">' + esc(item.details).replace(/\n/g, '<br>') + '</p>' +
+      '<div class="action-entry-meta">' +
+      (item.category ? '<span><i class="bi bi-bookmark"></i> ' + esc(item.category) + '</span>' : '') +
+      (item.people ? '<span><i class="bi bi-people"></i> ' + esc(item.people) + '</span>' : '') +
+      (item.place ? '<span><i class="bi bi-geo-alt"></i> ' + esc(item.place) + '</span>' : '') +
+      '</div><div class="action-entry-controls"><button type="button" class="btn btn-sm btn-outline-secondary" data-action-edit="' + esc(item.id) + '"><i class="bi bi-pencil"></i> تعديل</button>' +
+      '<button type="button" class="btn btn-sm btn-outline-danger" data-action-delete="' + esc(item.id) + '"><i class="bi bi-trash3"></i> حذف</button></div></article>';
+  }).join('') : '<div class="action-empty"><i class="bi bi-journal-richtext"></i><strong>لسه مفيش تسجيلات</strong><p>ابدأ بإضافة حدث مهم أو اكتب أول صفحة في يومياتك.</p></div>';
+  const cloudLabel = cloudSettingsInitialized
+    ? '<span class="action-sync-state is-ready"><i class="bi bi-cloud-check"></i> المزامنة السحابية جاهزة</span>'
+    : '<span class="action-sync-state"><i class="bi bi-cloud-exclamation"></i> المزامنة لم تُفعّل على هذا الجهاز بعد</span>';
+  return '<section class="actions-page">' +
+    '<div class="actions-hero"><div><span class="actions-eyebrow">مساحتك الشخصية</span><h2>ACTIONS <span>/ أحداث ويوميات</span></h2><p>احتفظ بالأحداث المهمة، وسجّل أفكارك ومشاعرك في أي وقت.</p></div>' +
+    '<div class="actions-hero-icon"><i class="bi bi-journal-bookmark"></i></div></div>' +
+    '<div class="actions-summary"><div><strong>' + events.length + '</strong><span>أحداث مهمة</span></div><div><strong>' + diary.length + '</strong><span>يوميات</span></div><div class="actions-summary-sync">' + cloudLabel + '<small>تظهر تسجيلاتك على أجهزتك بعد تأكيد المزامنة.</small></div></div>' +
+    '<div class="box actions-editor"><div class="actions-editor-heading"><div><h3>' + (editing ? 'تعديل التسجيل' : 'إضافة تسجيل جديد') + '</h3><p>المحتوى نصّي بالكامل، ويمكنك تعديل أو حذف أي تسجيل لاحقًا.</p></div></div>' +
+    '<div class="actions-kind-switch"><button type="button" class="' + (kind === 'event' ? 'active' : '') + '" data-action-kind="event"><i class="bi bi-calendar-event"></i> حدث مهم</button><button type="button" class="' + (kind === 'diary' ? 'active' : '') + '" data-action-kind="diary"><i class="bi bi-journal-text"></i> يومياتي</button></div>' +
+    '<form id="formAction" class="actions-form"><input type="hidden" name="id" value="' + esc(editing ? editing.id : '') + '"><input type="hidden" name="kind" value="' + kind + '">' +
+    '<div class="row g-3"><div class="col-12 col-md-8"><label class="form-label">' + (kind === 'diary' ? 'عنوان اختياري' : 'عنوان الحدث') + '</label><input class="form-control" name="title" maxlength="120" ' + (kind === 'event' ? 'required' : '') + ' value="' + esc(editing ? editing.title : '') + '" placeholder="' + (kind === 'diary' ? 'مثلاً: فكرة عايز أرجعلها' : 'مثلاً: أول يوم في شغلي الجديد') + '"></div>' +
+    '<div class="col-12 col-md-4"><label class="form-label">التاريخ</label><input type="date" class="form-control" name="date" required value="' + esc(editing ? editing.date : localISODate()) + '"></div>' +
+    '<div class="col-12 col-md-4"><label class="form-label">التصنيف</label><select class="form-select" name="category">' + categoryOptions + (editing && !categories.includes(editing.category) ? '<option selected value="' + esc(editing.category) + '">' + esc(editing.category) + '</option>' : '') + '</select></div>' +
+    '<div class="col-12 col-md-4 action-event-only"><label class="form-label">الأشخاص <span class="note">(اختياري)</span></label><input class="form-control" name="people" maxlength="300" value="' + esc(editing ? editing.people : '') + '" placeholder="مين كان موجود؟"></div>' +
+    '<div class="col-12 col-md-4 action-event-only"><label class="form-label">المكان <span class="note">(اختياري)</span></label><input class="form-control" name="place" maxlength="160" value="' + esc(editing ? editing.place : '') + '" placeholder="أين حدث ذلك؟"></div>' +
+    '<div class="col-12"><label class="form-label">' + (kind === 'diary' ? 'اكتب يومياتك وأفكارك' : 'تفاصيل الحدث') + '</label><textarea class="form-control" name="details" rows="5" maxlength="10000" required placeholder="' + (kind === 'diary' ? 'اكتب اللي في بالك براحتك...' : 'احكي تفاصيل الحدث واللي تحب تفتكره...') + '">' + esc(editing ? editing.details : '') + '</textarea></div></div>' +
+    '<div class="actions-form-footer"><span class="note">الحفظ تلقائي على الجهاز ثم المزامنة مع Google Sheets.</span><div><button type="button" class="btn btn-light" data-action-cancel ' + (editing ? '' : 'hidden') + '>إلغاء التعديل</button> <button type="submit" class="btn btn-primary"><i class="bi bi-cloud-arrow-up"></i> ' + (editing ? 'حفظ التعديلات' : 'حفظ التسجيل') + '</button></div></div></form></div>' +
+    '<div class="actions-list-heading"><div><h3>سجلّك الشخصي</h3><p>الأحدث أولًا · ' + entries.length + ' تسجيل</p></div></div><div class="actions-entry-list">' + cards + '</div></section>';
+}
+
 function render() {
   destroyCharts();
   $$('#navTabs .nav-link').forEach(b => b.classList.toggle('active', b.dataset.tab === S.ui.tab));
   const c = calc();
-  const views = { dash: vDash, tx: vTx, income: vIncomeSources, plan: vPlanner, acc: vAcc, ast: vAst, set: vSet, aud: vAud, rec: vRecurring, goal: vFinancialGoals };
+  const views = { dash: vDash, tx: vTx, income: vIncomeSources, plan: vPlanner, acc: vAcc, ast: vAst, set: vSet, aud: vAud, rec: vRecurring, goal: vFinancialGoals, actions: vActions };
   const appRoot = $('#app');
   const previousRenderedTab = appRoot.dataset.renderedTab || '';
   const shouldAnimateView = Boolean(previousRenderedTab && previousRenderedTab !== S.ui.tab);
